@@ -44,6 +44,8 @@ opt.vocab_size = loader:getVocabSize()
 opt.idx_to_token = loader.info.idx_to_token
 
 -- initialize the DenseCap model object
+-- pretrained model
+opt.checkpoint_start_from = 'data/models/densecap/densecap-pretrained-vgg16.t7'
 local dtype = 'torch.CudaTensor'
 local model = models.setup(opt):type(dtype)
 

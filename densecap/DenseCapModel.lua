@@ -18,7 +18,7 @@ local debugger = require('fb.debugger')
 local DenseCapModel, parent = torch.class('DenseCapModel', 'nn.Module')
 
 
-function DenseCapModel:__init(opt)
+function DenseCapModel:__init(opt, pretrained_model)
   local net_utils = require 'densecap.net_utils'
   opt = opt or {}  
   opt.cnn_name = utils.getopt(opt, 'cnn_name', 'vgg-16')
@@ -69,36 +69,62 @@ function DenseCapModel:__init(opt)
   else
     error(string.format('Unrecognized CNN "%s"', opt.cnn_name))
   end
-  
+
   -- Now that we have the indices, actually chop up the CNN.
-  self.nets.conv_net1 = net_utils.subsequence(cnn, conv_start1, conv_end1)
-  self.nets.conv_net2 = net_utils.subsequence(cnn, conv_start2, conv_end2)
+  if pretrained_model ~= nil then
+    -- pretrained model
+    self.nets.conv_net1 = pretrained_model.net:get(1)
+    self.nets.conv_net2 = pretrained_model.net:get(2)
+  else 
+    self.nets.conv_net1 = net_utils.subsequence(cnn, conv_start1, conv_end1)
+    self.nets.conv_net2 = net_utils.subsequence(cnn, conv_start2, conv_end2)
+  end
   self.net:add(self.nets.conv_net1)
   self.net:add(self.nets.conv_net2)
-  
+  print('Successfully load conv_net 1 and 2')
+
   -- Figure out the receptive fields of the CNN
   -- TODO: Should we just hardcode this too per CNN?
   local conv_full = net_utils.subsequence(cnn, conv_start1, conv_end2)
   local x0, y0, sx, sy = net_utils.compute_field_centers(conv_full)
   self.opt.field_centers = {x0, y0, sx, sy}
 
-  self.nets.localization_layer = nn.LocalizationLayer(opt)
+  -- Localization layer
+  if pretrained_model ~= nil then
+    self.nets.localization_layer = pretrained_model.net:get(3)
+  else 
+    self.nets.localization_layer = nn.LocalizationLayer(opt)
+  end
   self.net:add(self.nets.localization_layer)
-  
+
+  debugger.enter()  
+
   -- Recognition base network; FC layers from VGG.
   -- Produces roi_codes of dimension fc_dim.
   -- TODO: Initialize this from scratch for ResNet?
-  self.nets.recog_base = net_utils.subsequence(cnn, recog_start, recog_end)
-  
+  if pretrained_model ~= nil then 
+    self.nets.recog_base = pretrained_model.nets.recog_base
+  else 
+    self.nets.recog_base = net_utils.subsequence(cnn, recog_start, recog_end)
+  end 
+
   -- Objectness branch; outputs positive / negative probabilities for final boxes
-  self.nets.objectness_branch = nn.Linear(fc_dim, 1)
-  self.nets.objectness_branch.weight:normal(0, opt.std)
-  self.nets.objectness_branch.bias:zero()
-  
+  if pretrained_model ~= nil then
+    self.nets.objectness_branch = pretrained_model.nets.objectness_branch
+  else 
+    self.nets.objectness_branch = nn.Linear(fc_dim, 1)
+    self.nets.objectness_branch.weight:normal(0, opt.std)
+    self.nets.objectness_branch.bias:zero()
+  end
+
   -- Final box regression branch; regresses from RPN boxes to final boxes
-  self.nets.box_reg_branch = nn.Linear(fc_dim, 4)
-  self.nets.box_reg_branch.weight:zero()
-  self.nets.box_reg_branch.bias:zero()
+  if pretrained_model ~= nil then
+    self.nets.box_reg_branch = pretrained_model.nets.box_reg_branch
+  else
+    self.nets.box_reg_branch = nn.Linear(fc_dim, 4)
+    self.nets.box_reg_branch.weight:zero()
+    self.nets.box_reg_branch.bias:zero()
+  end
 
   -- Set up LanguageModel
   local lm_opt = {
