@@ -5,7 +5,7 @@ local utils = require 'densecap.utils'
 
 
 local LM, parent = torch.class('nn.LanguageModel', 'nn.Module')
-
+local debugger = require('fb.debugger')
 
 function LM:__init(opt)
   parent.__init(self)
@@ -57,13 +57,13 @@ function LM:__init(opt)
   self.view_in = nn.View(1, 1, -1):setNumInputDims(3)
   self.view_out = nn.View(1, -1):setNumInputDims(2)
   self.rnn:add(self.view_in)
-  self.rnn:add(nn.Linear(H, V + 1))
+  -- self.rnn:add(nn.Linear(H, V + 1))
   self.rnn:add(self.view_out)
 
   -- self.net maps a table {image_vecs, gt_seq} to word probabilities
   self.net = nn.Sequential()
   local parallel = nn.ParallelTable()
-  parallel:add(self.image_encoder)
+  --parallel:add(self.image_encoder)
   parallel:add(self.start_token_generator)
   parallel:add(self.lookup_table)
   self.net:add(parallel)
@@ -105,8 +105,8 @@ end
 
 function LM:updateOutput(input)
   self.recompute_backward = true
-  local image_vectors = input[1]
-  local gt_sequence = input[2]
+  --local image_vectors = input[1]
+  local gt_sequence = input
     
   if gt_sequence:nElement() > 0 then
     -- Add a start token to the start of the gt_sequence, and replace
@@ -119,9 +119,9 @@ function LM:updateOutput(input)
     self._gt_with_start[mask] = self.NULL_TOKEN
     
     -- Reset the views around the nn.Linear
-    self.view_in:resetSize(N * (T + 2), -1)
-    self.view_out:resetSize(N, T + 2, -1)
-    self.output = self.net:updateOutput{image_vectors, self._gt_with_start}
+    self.view_in:resetSize(N * (T + 1), -1)
+    self.view_out:resetSize(N, T + 1, -1)
+    self.output = self.net:updateOutput{self._gt_with_start}
     self._forward_sampled = false
     return self.output
   else
@@ -367,9 +367,12 @@ function LM:backward(input, gradOutput, scale)
   assert(self._forward_sampled == false, 'cannot backprop through sampling')
   assert(scale == nil or scale == 1.0)
   self.recompute_backward = false
-  local net_input = {input[1], self._gt_with_start}
-  self.gradInput = self.net:backward(net_input, gradOutput, scale)
-  self.gradInput[2] = input[2].new(#input[2]):zero()
+  --local net_input = {input[1], self._gt_with_start}
+  -- self.gradInput = self.net:backward(self._gt_with_start, gradOutput, scale)
+  --self.gradInput[2] = input[2].new(#input[2]):zero()
+  --self.gradInout = input.new(#input):zero()
+  -- Andrew
+  self.gradInput = torch.zeros(#input):cuda()
   return self.gradInput
 end
 

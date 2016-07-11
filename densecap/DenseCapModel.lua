@@ -9,11 +9,12 @@ require 'densecap.modules.BilinearRoiPooling'
 require 'densecap.modules.ApplyBoxTransform'
 require 'densecap.modules.LogisticCriterion'
 require 'densecap.modules.PosSlicer'
+require 'densecap.modules.BoxIoU'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
 
-
+local debugger = require('fb.debugger')
 local DenseCapModel, parent = torch.class('DenseCapModel', 'nn.Module')
 
 
@@ -99,8 +100,6 @@ function DenseCapModel:__init(opt)
   self.nets.box_reg_branch.weight:zero()
   self.nets.box_reg_branch.bias:zero()
 
-  -- Andrew: remove Language Model
-  --[[
   -- Set up LanguageModel
   local lm_opt = {
     vocab_size = opt.vocab_size,
@@ -111,7 +110,7 @@ function DenseCapModel:__init(opt)
     image_vector_dim=fc_dim,
   }
   self.nets.language_model = nn.LanguageModel(lm_opt)
-  --]]
+
   self.nets.recog_net = self:_buildRecognitionNet()
   self.net:add(self.nets.recog_net)
 
@@ -119,7 +118,8 @@ function DenseCapModel:__init(opt)
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
   self.crits.box_reg_crit = nn.BoxRegressionCriterion(opt.end_box_reg_weight)
-  self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
+  self.crits.IoUs_crit = nn.SmoothL1Criterion()
+  --self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
 
   self:training()
   self.finetune_cnn = false
@@ -141,12 +141,15 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
-  -- Andrew: no need to calculate language
-  --[[
-  local lm_input = {pos_roi_codes, gt_labels}
-  local lm_output = self.nets.language_model(lm_input)
-  --]]
-
+  --local lm_input = {pos_roi_codes, gt_labels}
+  --local lm_output = self.nets.language_model(lm_input)
+  local lm_output = self.nets.language_model(gt_labels)
+  -- take average
+  lm_output = nn.Mean(2)(lm_output)
+  local pos_roi_feat = nn.Linear(4096,512)(pos_roi_codes)
+  --pos_roi_feat = nn.Transpose({1,2})(pos_roi_feat) -- 512,P
+  local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
+  
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
   objectness_scores:annotate{name='objectness_branch'}
@@ -155,21 +158,13 @@ function DenseCapModel:_buildRecognitionNet()
   final_box_trans:annotate{name='box_reg_branch'}
 
   local inputs = {roi_feats, roi_boxes, gt_boxes, gt_labels}
-  -- Andrew: remove lm_output
-  local outputs = {
-    objectness_scores,
-    pos_roi_boxes, final_box_trans, final_boxes,
-    gt_boxes, gt_labels,
-  }
-
-  --[[
   local outputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
     lm_output,
-    gt_boxes, gt_labels,
+    gt_boxes, gt_labels , pred_IoUs
   }
-  --]]
+
   local mod = nn.gModule(inputs, outputs)
   mod.name = 'recognition_network'
   return mod
@@ -275,10 +270,6 @@ function DenseCapModel:updateOutput(input)
   if not self.train and self.opt.final_nms_thresh > 0 then
     -- We need to apply the same NMS mask to the final boxes, their
     -- objectness scores, and the output from the language model
-
-
-    -- Andrew: eliminate the language model related parameter
-    --[[
     local final_boxes_float = self.output[4]:float()
     local class_scores_float = self.output[1]:float()
     local lm_output_float = self.output[5]:float()
@@ -290,16 +281,6 @@ function DenseCapModel:updateOutput(input)
     self.output[4] = final_boxes_float:index(1, idx):typeAs(self.output[4])
     self.output[1] = class_scores_float:index(1, idx):typeAs(self.output[1])
     self.output[5] = lm_output_float:index(1, idx):typeAs(self.output[5])
-    --]]
-    local final_boxes_float = self.output[4]:float()
-    local class_scores_float = self.output[1]:float()
-    local boxes_scores = torch.FloatTensor(final_boxes_float:size(1), 5)
-    local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_boxes_float)
-    boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
-    boxes_scores[{{}, 5}]:copy(class_scores_float[{{}, 1}])
-    local idx = box_utils.nms(boxes_scores, self.opt.final_nms_thresh)
-    self.output[4] = final_boxes_float:index(1, idx):typeAs(self.output[4])
-    self.output[1] = class_scores_float:index(1, idx):typeAs(self.output[1])
 
     -- TODO: In the old StnDetectionModel we also applied NMS to the
     -- variables dumped by the LocalizationLayer. Do we want to do that?
@@ -355,9 +336,10 @@ function DenseCapModel:forward_test(input)
 end
 
 
-function DenseCapModel:setGroundTruth(gt_boxes, gt_labels)
+function DenseCapModel:setGroundTruth(gt_boxes, gt_labels, gt_length)
   self.gt_boxes = gt_boxes
   self.gt_labels = gt_labels
+  self.gt_length = gt_length
   self._called_forward = false
   self.nets.localization_layer:setGroundTruth(gt_boxes, gt_labels)
 end
@@ -378,6 +360,7 @@ function DenseCapModel:backward(input, gradOutput)
   local dout = gradOutput
   for i = 4, end_idx, -1 do
     local layer_input = self.net:get(i-1).output
+    --debugger.enter()
     dout = self.net:get(i):backward(layer_input, dout)
   end
 
@@ -430,12 +413,9 @@ function DenseCapModel:forward_backward(data)
   self:training()
 
   -- Run the model forward
-  self:setGroundTruth(data.gt_boxes, data.gt_labels)
+  self:setGroundTruth(data.gt_boxes, data.gt_labels, data.gt_length)
   local out = self:forward(data.image)
 
-
-  -- Andrew: remove lm_output
-  --[[
   -- Pick out the outputs we care about
   local objectness_scores = out[1]
   local pos_roi_boxes = out[2]
@@ -443,16 +423,36 @@ function DenseCapModel:forward_backward(data)
   local lm_output = out[5]
   local gt_boxes = out[6]
   local gt_labels = out[7]
-  --]]
-  -- Pick out the outputs we care about
-  local objectness_scores = out[1]
-  local pos_roi_boxes = out[2]
-  local final_box_trans = out[3]
-  local gt_boxes = out[5]
-  local gt_labels = out[6]
+  local pred_IoUs = out[8]
 
   local num_boxes = objectness_scores:size(1)
   local num_pos = pos_roi_boxes:size(1)
+
+  local boxes_view = pos_roi_boxes:view(1, -1, 4)
+  local gt_boxes_view = gt_boxes:view(1, -1, 4)
+  local box_iou = nn.BoxIoU():type(gt_boxes:type())
+  local IoUs = box_iou:forward{boxes_view, gt_boxes_view}  -- N x M
+  --[[
+  -- Andrew
+  extractEndOutput = function (pos_target_idx, gt_length, lm_output)
+    local selectModel = nn.ConcatTable()
+    for i = 1, pos_target_idx:size(1) do
+      selectModel:add(nn.SelectTable(pos_target_idx[i]))
+    end
+    local pos_gt_length = selectModel:forward(gt_length)
+
+    local end_mask = torch.zeros(lm_output:size())
+    for i = 1,lm_output:size(1) do
+      end_mask[i][pos_gt_length[i] ] = 1
+    end
+    local lm_output_end = torch.cmul(end_mask:cuda(), lm_output)
+    lm_output_end = torch.sum(lm_output_end,2):view(lm_output_end:size(1),-1)  -- P,512
+    return lm_output_end
+  end
+  dextractEndOutput = autograd(extraceEndOutput)
+  dparams, lm_output_end = dneuralNet(params, x, y)
+  debugger.enter()
+  ]]--
 
   -- Compute final objectness loss and gradient
   local objectness_labels = torch.LongTensor(num_boxes):zero()
@@ -474,63 +474,47 @@ function DenseCapModel:forward_backward(data)
                          {pos_roi_boxes, final_box_trans},
                          gt_boxes)
   local grad_pos_roi_boxes, grad_final_box_trans = unpack(din)
-
-  -- Andrew: remove caption loss
-  -- Compute captioning loss
   --[[
+  -- Compute captioning loss
   local target = self.nets.language_model:getTarget(gt_labels)
   local captioning_loss = self.crits.lm_crit:forward(lm_output, target)
   captioning_loss = captioning_loss * self.opt.captioning_weight
   local grad_lm_output = self.crits.lm_crit:backward(lm_output, target)
   grad_lm_output:mul(self.opt.captioning_weight)
   --]]
+  local IoUs_loss = self.crits.IoUs_crit:forward(pred_IoUs, IoUs)
+  IoUs_loss = IoUs_loss * 1
+  local grad_IoUs = self.crits.IoUs_crit:backward(pred_IoUs, IoUs)
+  grad_IoUs:mul(1)
 
   local ll_losses = self.nets.localization_layer.stats.losses
-  -- Andrew: remove caption loss
-  --[[
   local losses = {
     mid_objectness_loss=ll_losses.obj_loss_pos + ll_losses.obj_loss_neg,
     mid_box_reg_loss=ll_losses.box_reg_loss,
     end_objectness_loss=end_objectness_loss,
     end_box_reg_loss=end_box_reg_loss,
-    captioning_loss=captioning_loss,
+    IoUs_loss = IoUs_loss
+    --captioning_loss=captioning_loss,
   }
-  --]]
-  local losses = {
-    mid_objectness_loss=ll_losses.obj_loss_pos + ll_losses.obj_loss_neg,
-    mid_box_reg_loss=ll_losses.box_reg_loss,
-    end_objectness_loss=end_objectness_loss,
-    end_box_reg_loss=end_box_reg_loss
-  }
-
-  losses.total_loss = 0
+  local sum = 0
   for k, v in pairs(losses) do
-    losses.total_loss = losses.total_loss + v
+    sum = sum + v
   end
 
-
-  -- Andrew: remove grad_lm_output
-  --[[
+  losses.total_loss = sum
   -- Run the model backward
   local grad_out = {}
   grad_out[1] = grad_objectness_scores
   grad_out[2] = grad_pos_roi_boxes
   grad_out[3] = grad_final_box_trans
   grad_out[4] = out[4].new(#out[4]):zero()
-  grad_out[5] = grad_lm_output
+  --grad_out[5] = grad_lm_output
+  grad_out[5] = lm_output.new(#lm_output):zero()
   grad_out[6] = gt_boxes.new(#gt_boxes):zero()
   grad_out[7] = gt_labels.new(#gt_labels):zero()
-  --]]
-  -- Run the model backward
-  local grad_out = {}
-  grad_out[1] = grad_objectness_scores
-  grad_out[2] = grad_pos_roi_boxes
-  grad_out[3] = grad_final_box_trans
-  grad_out[4] = out[4].new(#out[4]):zero()
-  grad_out[5] = gt_boxes.new(#gt_boxes):zero()
-  grad_out[6] = gt_labels.new(#gt_labels):zero()
-
+  grad_out[8] = grad_IoUs
   self:backward(input, grad_out)
+
 
   return losses
 end

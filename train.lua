@@ -20,7 +20,7 @@ local utils = require 'densecap.utils'
 local opts = require 'train_opts'
 local models = require 'models'
 local eval_utils = require 'eval.eval_utils'
-
+local debugger = require('fb.debugger')
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
@@ -74,6 +74,12 @@ local function lossFun()
   for k, v in pairs(data) do
     data[k] = v:type(dtype)
   end
+
+  -- Andrew
+  -- create tensor length
+  data.gt_length = torch.eq(torch.eq(data.gt_labels,0),0):sum(3)+1
+  data.gt_length = data.gt_length:view(-1)
+
   if opt.timing then cutorch.synchronize() end
   local getBatch_time = timer:time().real
 
@@ -87,7 +93,8 @@ local function lossFun()
   if opt.progress_dump_every > 0 and iter % opt.progress_dump_every == 0 then
     model.dump_vars = true
   end
-  local losses, stats = model:forward_backward(data)
+
+  local losses, stat = model:forward_backward(data)
 
   -- Apply L2 regularization
   if opt.weight_decay > 0 then

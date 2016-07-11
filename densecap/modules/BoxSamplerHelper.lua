@@ -1,7 +1,7 @@
 require 'densecap.modules.BoxSampler'
 
 local helper, parent = torch.class('nn.BoxSamplerHelper', 'nn.Module')
-
+local debugger = require('fb.debugger')
 
 function helper:__init(options)
   parent.__init(self)
@@ -177,6 +177,5 @@ function helper:updateGradInput(input, gradOutput)
     end
     
   end
-
   return self.gradInput
 end
