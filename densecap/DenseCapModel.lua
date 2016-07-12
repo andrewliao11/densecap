@@ -97,7 +97,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   end
   self.net:add(self.nets.localization_layer)
 
-  debugger.enter()  
+  --debugger.enter()  
 
   -- Recognition base network; FC layers from VGG.
   -- Produces roi_codes of dimension fc_dim.
@@ -140,6 +140,9 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.nets.recog_net = self:_buildRecognitionNet()
   self.net:add(self.nets.recog_net)
 
+  self.nets.languageEncoder = self:_buildLanguageEncoder()
+  self.net:add(self.nets.languageEncoder)
+
   -- Set up Criterions
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
@@ -151,6 +154,41 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.finetune_cnn = false
 end
 
+function DenseCapModel:_buildLanguageEncoder()
+
+  local objectness_scores = nn.Identity()()
+  local pos_roi_boxes = nn.Identity()()
+  local final_box_trans = nn.Identity()()
+  local final_boxes = nn.Identity()()
+  local gt_boxes = nn.Identity()()
+  local gt_labels = nn.Identity()()
+  local pos_roi_codes = nn.Identity()()
+
+  local lm_output = self.nets.language_model(gt_labels)
+  -- take average
+  lm_output = nn.Mean(2)(lm_output)
+  local pos_roi_feat = nn.Linear(4096,512)(pos_roi_codes)
+  --pos_roi_feat = nn.Transpose({1,2})(pos_roi_feat) -- 512,P
+  local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
+ 
+  local inputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    gt_boxes, gt_labels , pos_roi_codes
+  }
+
+  local outputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    lm_output,
+    gt_boxes, gt_labels , pred_IoUs
+  }
+
+  local mod = nn.gModule(inputs, outputs)
+  mod.name = 'language_encoder'
+  return mod
+   
+end
 
 function DenseCapModel:_buildRecognitionNet()
   local roi_feats = nn.Identity()()
@@ -167,6 +205,7 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
+  --[[
   --local lm_input = {pos_roi_codes, gt_labels}
   --local lm_output = self.nets.language_model(lm_input)
   local lm_output = self.nets.language_model(gt_labels)
@@ -175,7 +214,8 @@ function DenseCapModel:_buildRecognitionNet()
   local pos_roi_feat = nn.Linear(4096,512)(pos_roi_codes)
   --pos_roi_feat = nn.Transpose({1,2})(pos_roi_feat) -- 512,P
   local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
-  
+  --]]
+
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
   objectness_scores:annotate{name='objectness_branch'}
@@ -187,8 +227,7 @@ function DenseCapModel:_buildRecognitionNet()
   local outputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
-    lm_output,
-    gt_boxes, gt_labels , pred_IoUs
+    gt_boxes, gt_labels , pos_roi_codes
   }
 
   local mod = nn.gModule(inputs, outputs)
@@ -276,17 +315,26 @@ Output: A table of
 --]]
 function DenseCapModel:updateOutput(input)
   -- Make sure the input is (1, 3, H, W)
+
   assert(input:dim() == 4 and input:size(1) == 1 and input:size(2) == 3)
   local H, W = input:size(3), input:size(4)
   self.nets.localization_layer:setImageSize(H, W)
-
   if self.train then
     assert(not self._called_forward,
       'Must call setGroundTruth before training-time forward pass')
     self._called_forward = true
   end
-  self.output = self.net:forward(input)
 
+  if self.train then
+    self.output = self.net:forward(input)
+  else
+    local cnn1_out = self.net:get(1):forward(input)
+    local cnn2_out = self.net:get(2):forward(cnn1_out)
+    local localization_out = self.net:get(3):forward(cnn2_out)
+    local recognition_out = self.net:get(4):forward(localization_out)
+    recognition_out[6] = self.gt_labels:view(self.gt_labels:size(2),-1)
+    self.output = self.net:get(5):forward(recognition_out)
+  end
   -- At test-time, apply NMS to final boxes
   local verbose = false
   if verbose then
@@ -298,7 +346,7 @@ function DenseCapModel:updateOutput(input)
     -- objectness scores, and the output from the language model
     local final_boxes_float = self.output[4]:float()
     local class_scores_float = self.output[1]:float()
-    local lm_output_float = self.output[5]:float()
+    --local lm_output_float = self.output[5]:float()
     local boxes_scores = torch.FloatTensor(final_boxes_float:size(1), 5)
     local boxes_x1y1x2y2 = box_utils.xcycwh_to_x1y1x2y2(final_boxes_float)
     boxes_scores[{{}, {1, 4}}]:copy(boxes_x1y1x2y2)
@@ -306,12 +354,11 @@ function DenseCapModel:updateOutput(input)
     local idx = box_utils.nms(boxes_scores, self.opt.final_nms_thresh)
     self.output[4] = final_boxes_float:index(1, idx):typeAs(self.output[4])
     self.output[1] = class_scores_float:index(1, idx):typeAs(self.output[1])
-    self.output[5] = lm_output_float:index(1, idx):typeAs(self.output[5])
+    --self.output[5] = lm_output_float:index(1, idx):typeAs(self.output[5])
 
     -- TODO: In the old StnDetectionModel we also applied NMS to the
     -- variables dumped by the LocalizationLayer. Do we want to do that?
   end
-
 
   return self.output
 end
@@ -353,12 +400,15 @@ Returns:
 --]]
 function DenseCapModel:forward_test(input)
   self:evaluate()
-  local output = self:forward(input)
+  self:setGroundTruth(nil,input[2], nil)
+  local output = self:forward(input[1])
   local final_boxes = output[4]
+  local pos_roi_boxes = output[2]
   local objectness_scores = output[1]
-  local captions = output[5]
-  local captions = self.nets.language_model:decodeSequence(captions)
-  return final_boxes, objectness_scores, captions
+  local pred_IoUs = output[8]
+  --local captions = output[5]
+  --local captions = self.nets.language_model:decodeSequence(captions)
+  return final_boxes, objectness_scores, pred_IoUs, pos_roi_boxes
 end
 
 
@@ -367,15 +417,19 @@ function DenseCapModel:setGroundTruth(gt_boxes, gt_labels, gt_length)
   self.gt_labels = gt_labels
   self.gt_length = gt_length
   self._called_forward = false
-  self.nets.localization_layer:setGroundTruth(gt_boxes, gt_labels)
+  if self.train then
+    self.nets.localization_layer:setGroundTruth(gt_boxes, gt_labels)
+  else 
+    self.nets.localization_layer:setGroundTruth(nil, nil)
+  end
 end
-
 
 function DenseCapModel:backward(input, gradOutput)
   -- Manually backprop through part of the network
   -- self.net has 4 elements:
   -- (1) CNN part 1        (2) CNN part 2
   -- (3) LocalizationLayer (4) Recognition network
+  -- (5) Language Encoder
   -- We always backprop through (3) and (4), and only backprop through
   -- (2) when finetuning; we never backprop through (1).
   -- Note that this means we break the module API in this method, and don't
@@ -384,7 +438,7 @@ function DenseCapModel:backward(input, gradOutput)
   local end_idx = 3
   if self.finetune_cnn then end_idx = 2 end
   local dout = gradOutput
-  for i = 4, end_idx, -1 do
+  for i = 5, end_idx, -1 do
     local layer_input = self.net:get(i-1).output
     --debugger.enter()
     dout = self.net:get(i):backward(layer_input, dout)
@@ -450,7 +504,7 @@ function DenseCapModel:forward_backward(data)
   local gt_boxes = out[6]
   local gt_labels = out[7]
   local pred_IoUs = out[8]
-
+  --debugger.enter()
   local num_boxes = objectness_scores:size(1)
   local num_pos = pos_roi_boxes:size(1)
 

@@ -3,8 +3,9 @@ local cjson = require 'cjson'
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
 
+require 'densecap.modules.BoxIoU'
 local eval_utils = {}
-
+local debugger = require('fb.debugger')
 
 --[[
 Evaluate a DenseCapModel on a split of data from a DataLoader.
@@ -37,6 +38,10 @@ function eval_utils.eval_split(kwargs)
 
   local counter = 0
   local all_losses = {}
+
+  local ious = nn.BoxIoU()
+  local total_query = 0
+  local hit = 0
   while true do
     counter = counter + 1
     
@@ -57,12 +62,31 @@ function eval_utils.eval_split(kwargs)
     model.cnn_backward = false
     local losses = model:forward_backward(data)
     table.insert(all_losses, losses)
-
     -- Call forward_test to make predictions, and pass them to evaluator
+    -- Andrew
+    --[[
     local boxes, logprobs, captions = model:forward_test(data.image)
     local gt_captions = model.nets.language_model:decodeSequence(gt_labels[1])
     evaluator:addResult(logprobs, boxes, captions, gt_boxes[1], gt_captions)
+    --]]
+    -- boxes: proposal
+    -- logprobs: objectness score
+    -- pred_IoUs
+    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test({data.image, data.gt_labels})
     
+    evaluator:addResult(logprobs, boxes, nil, gt_boxes[1])
+    y, i = torch.max(pred_IoUs:float(), 2)
+    pos_roi_boxes = pos_roi_boxes:float()
+    pred_boxes = pos_roi_boxes:index(1,i:view(-1)):view(1, -1, 4)
+    --debugger.enter()
+    for i = 1, pred_boxes:size(2) do
+      iou = ious:forward{pred_boxes[1][i]:view(1, -1, 4), gt_boxes[1][i]:float():view(1, -1, 4)}
+      iou = iou:view(-1)
+      if iou[1] > 0.5 then
+	hit = hit+1
+      end
+    end
+    total_query = total_query + pred_boxes:size(2)
     -- Print a message to the console
     local msg = 'Processed image %s (%d / %d) of split %d, detected %d regions'
     local num_images = info.split_bounds[2]
@@ -71,15 +95,16 @@ function eval_utils.eval_split(kwargs)
     print(string.format(msg, info.filename, counter, num_images, split, num_boxes))
 
     -- Break out if we have processed enough images
+    --if max_images > 0 and counter >= 10 then break end
     if max_images > 0 and counter >= max_images then break end
     if info.split_bounds[1] == info.split_bounds[2] then break end
   end
-
+  --debugger.enter()
   local loss_results = utils.dict_average(all_losses)
   print('Loss stats:')
   print(loss_results)
   print('Average loss: ', loss_results.total_loss)
-  
+  print('Precision: ', hit/total_query)
   local ap_results = evaluator:evaluate()
   print(string.format('mAP: %f', 100 * ap_results.map))
   
@@ -145,10 +170,11 @@ end
 -- boxes is (B x 4) are xcycwh, logprobs are (B x 2), target_boxes are (M x 4) also as xcycwh.
 -- these can be both on CPU or on GPU (they will be shipped to CPU if not already so)
 -- predict_text is length B list of strings, target_text is length M list of strings.
-function DenseCaptioningEvaluator:addResult(logprobs, boxes, text, target_boxes, target_text)
+-- Andrew remove text related
+function DenseCaptioningEvaluator:addResult(logprobs, boxes, pred_IoUs, target_boxes)
   assert(logprobs:size(1) == boxes:size(1))
-  assert(logprobs:size(1) == #text)
-  assert(target_boxes:size(1) == #target_text)
+  --assert(logprobs:size(1) == #text)
+  --assert(target_boxes:size(1) == #target_text)
   assert(boxes:nDimension() == 2)
 
   -- convert both boxes to x1y1x2y2 coordinate systems
