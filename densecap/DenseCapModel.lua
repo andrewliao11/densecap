@@ -19,6 +19,7 @@ local DenseCapModel, parent = torch.class('DenseCapModel', 'nn.Module')
 
 
 function DenseCapModel:__init(opt, pretrained_model)
+
   local net_utils = require 'densecap.net_utils'
   opt = opt or {}  
   opt.cnn_name = utils.getopt(opt, 'cnn_name', 'vgg-16')
@@ -143,6 +144,10 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.nets.languageEncoder = self:_buildLanguageEncoder()
   self.net:add(self.nets.languageEncoder)
 
+  --self.nets.fusingModel = self._buildFusingModel()
+  --self.nets.languageEncoder = self:_buildLanguageEncoder()
+  --self.net:add(self.nets.languageEncoder)
+
   -- Set up Criterions
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
@@ -154,6 +159,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.finetune_cnn = false
 end
 
+-- TODO input the mask
 function DenseCapModel:_buildLanguageEncoder()
 
   local objectness_scores = nn.Identity()()
@@ -184,13 +190,83 @@ function DenseCapModel:_buildLanguageEncoder()
     gt_boxes, gt_labels , pred_IoUs
   }
 
+  --[[
+  local objectness_scores = nn.Identity()()
+  local pos_roi_boxes = nn.Identity()()
+  local final_box_trans = nn.Identity()()
+  local final_boxes = nn.Identity()()
+  local gt_boxes = nn.Identity()()
+  local gt_labels = nn.Identity()()
+  local pos_roi_feat = nn.Identity()()
+  local query = nn.Identity()()
+
+
+  local lm_output = self.nets.language_model(query) -- N,16,512
+  self.nets.selectModel = nn.ConcatTable()
+  for i = 1, self.num_labels do
+    self.nets.selectModel:add(nn.Select(2,self.gt_length:float()[i]))
+  end
+
+  local lm_output_end = self.nets.selectModel(lm_output)
+  
+
+  --local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
+  local inputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    gt_boxes, gt_labels , pos_roi_feat, query
+  }
+  local outputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    lm_output_end,
+    gt_boxes, gt_labels , pos_roi_feat
+  }
+  --]]
   local mod = nn.gModule(inputs, outputs)
   mod.name = 'language_encoder'
+  return mod
+
+end
+
+function DenseCapModel:_buildFusingModel()
+
+  local objectness_scores = nn.Identity()()
+  local pos_roi_boxes = nn.Identity()()
+  local final_box_trans = nn.Identity()()
+  local final_boxes = nn.Identity()()
+  local gt_boxes = nn.Identity()()
+  local gt_labels = nn.Identity()()
+  local pos_roi_feat = nn.Identity()()
+  local lm_output_end = nn.Identity()()
+
+  -- take average
+  --lm_output = nn.Mean(2)(lm_output)
+
+  local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
+ 
+  local inputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    gt_boxes, gt_labels , pos_roi_feat,
+    lm_output_end
+  }
+
+  local outputs = {
+    objectness_scores,
+    pos_roi_boxes, final_box_trans, final_boxes,
+    lm_output_end,
+    gt_boxes, gt_labels , pred_IoUs
+  }
+
+  local mod = nn.gModule(inputs, outputs)
+  mod.name = 'fusingModel'
   return mod
    
 end
 
 function DenseCapModel:_buildRecognitionNet()
+
   local roi_feats = nn.Identity()()
   local roi_boxes = nn.Identity()()
   local gt_boxes = nn.Identity()()
@@ -204,17 +280,6 @@ function DenseCapModel:_buildRecognitionNet()
   
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
-
-  --[[
-  --local lm_input = {pos_roi_codes, gt_labels}
-  --local lm_output = self.nets.language_model(lm_input)
-  local lm_output = self.nets.language_model(gt_labels)
-  -- take average
-  lm_output = nn.Mean(2)(lm_output)
-  local pos_roi_feat = nn.Linear(4096,512)(pos_roi_codes)
-  --pos_roi_feat = nn.Transpose({1,2})(pos_roi_feat) -- 512,P
-  local pred_IoUs = nn.MM(false, true){lm_output, pos_roi_feat}
-  --]]
 
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
@@ -416,6 +481,7 @@ function DenseCapModel:setGroundTruth(gt_boxes, gt_labels, gt_length)
   self.gt_boxes = gt_boxes
   self.gt_labels = gt_labels
   self.gt_length = gt_length
+  self.num_labels = gt_labels:size(2)
   self._called_forward = false
   if self.train then
     self.nets.localization_layer:setGroundTruth(gt_boxes, gt_labels)
@@ -494,8 +560,22 @@ function DenseCapModel:forward_backward(data)
 
   -- Run the model forward
   self:setGroundTruth(data.gt_boxes, data.gt_labels, data.gt_length)
+
   local out = self:forward(data.image)
 
+  --[[
+  table.insert(out, data.gt_labels[1])
+  debugger.enter()
+  self.nets.languageEncoder = self:_buildLanguageEncoder()
+  debugger.enter()
+  out = self.nets.languageEncoder:forward(out)
+  debugger.enter()
+  out = self.nets.fusingModel:forward(out)
+  debugger.enter()
+  local out = self:forward(data.image)
+
+  debugger.enter()
+  --]]
   -- Pick out the outputs we care about
   local objectness_scores = out[1]
   local pos_roi_boxes = out[2]
@@ -594,7 +674,6 @@ function DenseCapModel:forward_backward(data)
   grad_out[7] = gt_labels.new(#gt_labels):zero()
   grad_out[8] = grad_IoUs
   self:backward(input, grad_out)
-
 
   return losses
 end
