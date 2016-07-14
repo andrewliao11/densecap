@@ -401,12 +401,31 @@ function DenseCapModel:updateOutput(input)
   if self.train then
     self.output = self.net:forward(input)
   else
+    local out = self.net:forward(input)
+
+    table.insert(out, self.gt_labels[1])
+    self.nets.languageEncoder = self:_buildLanguageEncoder()
+
+
+    out = self.nets.languageEncoder:forward(out)
+    out[5] = out[5]:float()
+    self.nets.selectModel = self:_buildSelectModel(self.gt_length)
+    out = self.nets.selectModel:forward(out)
+    out[8] = out[8]:float()
+    self.nets.fusingModel = self:_buildFusingModel()
+    out = self.nets.fusingModel:forward(out)
+
+    out[5] = out[5]:cuda()
+    out[8] = out[8]:cuda()
+    self.output = out
+    --[[
     local cnn1_out = self.net:get(1):forward(input)
     local cnn2_out = self.net:get(2):forward(cnn1_out)
     local localization_out = self.net:get(3):forward(cnn2_out)
     local recognition_out = self.net:get(4):forward(localization_out)
     recognition_out[6] = self.gt_labels:view(self.gt_labels:size(2),-1)
     self.output = self.net:get(5):forward(recognition_out)
+    --]]
   end
   -- At test-time, apply NMS to final boxes
   local verbose = false
@@ -473,12 +492,28 @@ Returns:
 --]]
 function DenseCapModel:forward_test(input)
   self:evaluate()
-  self:setGroundTruth(nil,input[2], nil)
-  local output = self:forward(input[1])
-  local final_boxes = output[4]
-  local pos_roi_boxes = output[2]
-  local objectness_scores = output[1]
-  local pred_IoUs = output[8]
+  self:setGroundTruth(nil, input[2], input[3])
+
+  local out = self:forward(input[1])
+  --[[
+  table.insert(out, input[2])
+  self.nets.languageEncoder = self:_buildLanguageEncoder()
+
+  out = self.nets.languageEncoder:forward(out)
+  out[5] = out[5]:float()
+  self.nets.selectModel = self:_buildSelectModel(input[3])
+  out = self.nets.selectModel:forward(out)
+  out[8] = out[8]:float()
+  self.nets.fusingModel = self:_buildFusingModel()
+  out = self.nets.fusingModel:forward(out)
+
+  out[5] = out[5]:cuda()
+  out[8] = out[8]:cuda()
+  --]]
+  local final_boxes = out[4]
+  local pos_roi_boxes = out[2]
+  local objectness_scores = out[1]
+  local pred_IoUs = out[8]
   --local captions = output[5]
   --local captions = self.nets.language_model:decodeSequence(captions)
   return final_boxes, objectness_scores, pred_IoUs, pos_roi_boxes
@@ -543,7 +578,6 @@ function DenseCapModel:getParameters()
   local cnn_params, grad_cnn_params = self.net:get(2):getParameters()
   local fakenet = nn.Sequential()
   fakenet:add(self.net:get(3))
-  debugger.enter()
   fakenet:add(self.net:get(4))
   local params, grad_params = fakenet:getParameters()
   return params, grad_params, cnn_params, grad_cnn_params

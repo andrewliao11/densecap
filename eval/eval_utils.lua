@@ -60,6 +60,10 @@ function eval_utils.eval_split(kwargs)
     model.timing = false
     model.dump_vars = false
     model.cnn_backward = false
+
+    data.gt_length = torch.eq(torch.eq(data.gt_labels,0),0):sum(3)+1
+    data.gt_length = data.gt_length:view(-1)
+
     local losses = model:forward_backward(data)
     table.insert(all_losses, losses)
     -- Call forward_test to make predictions, and pass them to evaluator
@@ -72,7 +76,7 @@ function eval_utils.eval_split(kwargs)
     -- boxes: proposal
     -- logprobs: objectness score
     -- pred_IoUs
-    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test({data.image, data.gt_labels})
+    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test({data.image, data.gt_labels, data.gt_length})
     
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1])
     y, i = torch.max(pred_IoUs:float(), 2)
