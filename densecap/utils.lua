@@ -1,7 +1,7 @@
 local cjson = require 'cjson'
 
 local utils = {}
-
+local debugger = require('fb.debugger')
 
 --[[
 Utility function to set up GPU imports and pick datatype based on commmand line
@@ -83,7 +83,7 @@ end
 
 function utils.read_json(path)
   local file = io.open(path, 'r')
-  local text = file:read()
+  local text = file:read('*a')
   file:close()
   local info = cjson.decode(text)
   return info
@@ -95,6 +95,19 @@ function utils.write_json(path, j)
   local file = io.open(path, 'w')
   file:write(text)
   file:close()
+end
+
+
+function utils.read_txt(path)
+
+  local file = io.open(path,'r')
+  local arr = {}
+  for line in file:lines() do
+    table.insert (arr, line);
+  end
+ 
+  return arr
+
 end
 
 -- dicts is a list of tables of k:v pairs, create a single

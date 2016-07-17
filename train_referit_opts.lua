@@ -8,6 +8,16 @@ function M.parse(arg)
   cmd:text()
   cmd:text('Options')
 
+  -- for referit 
+  cmd:option('-max_words', 25)
+  cmd:option('-dictionary_path','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/vocabulary.txt')
+  cmd:option('-trn_imlist_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/split/referit_trainval_imlist.txt')
+  cmd:option('-test_imlist_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/split/referit_test_imlist.txt')
+  cmd:option('-imsize_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/metadata/referit_imsize_dict.json')
+  cmd:option('-imcrop_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/metadata/referit_imcrop_dict.json')
+  cmd:option('-imcrop_bbox_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/metadata/referit_imcrop_bbox_dict.json')
+  cmd:option('-query_file','/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/metadata/referit_query_dict.json')
+
   -- Core ConvNet settings
   cmd:option('-backend', 'cudnn', 'nn|cudnn')
   
@@ -91,11 +101,11 @@ function M.parse(arg)
   cmd:option('-id', '',
     'an id identifying this run/job; useful for cross-validation')
   cmd:option('-seed', 123, 'random number generator seed to use')
-  cmd:option('-gpu', 0, 'which gpu to use. -1 = use CPU')
+  cmd:option('-gpu', 1, 'which gpu to use. -1 = use CPU')
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')
-  cmd:option('-eval_first_iteration',1,
+  cmd:option('-eval_first_iteration',0,
     'evaluate on first iteration? 1 = do, 0 = dont.')
 
   cmd:text()

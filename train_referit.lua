@@ -13,11 +13,11 @@ require 'lfs'
 require 'nn'
 local cjson = require 'cjson'
 
-require 'densecap.DataLoader'
+require 'densecap.DataLoader_referit'
 require 'densecap.DenseCapModel'
 require 'densecap.optim_updates'
 local utils = require 'densecap.utils'
-local opts = require 'train_opts'
+local opts = require 'train_referit_opts'
 local models = require 'models'
 local eval_utils = require 'eval.eval_utils'
 local debugger = require('fb.debugger')
@@ -72,13 +72,16 @@ local function lossFun()
   local timer = torch.Timer()
   local info
   local data = {}
-  data.image, data.gt_boxes, data.gt_labels, info, data.region_proposals = loader:getBatch()
+  while true do
+    num_query, data.image, data.gt_boxes, data.gt_labels, info, data.region_proposals = loader:getBatch()
+    if num_query ~= 0 then
+	break
+    end
+  end
   for k, v in pairs(data) do
     data[k] = v:type(dtype)
   end
 
-
-  debugger.enter()
   -- Andrew
   -- create tensor length
   data.gt_length = torch.eq(torch.eq(data.gt_labels,0),0):sum(3)+1

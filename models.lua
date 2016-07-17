@@ -13,7 +13,6 @@ function M.setup(opt)
     
     pretrained_model = torch.load(opt.checkpoint_start_from).model
     model = DenseCapModel(opt, pretrained_model)
-    --[[
     model.opt.objectness_weight = opt.objectness_weight
     model.nets.localization_layer.opt.obj_weight = opt.objectness_weight
     model.opt.box_reg_weight = opt.box_reg_weight
@@ -25,7 +24,7 @@ function M.setup(opt)
     model.opt.sampler_low_thresh = opt.iou_low_thresh
     model.opt.train_remove_outbounds_boxes = opt.train_remove_outbounds_boxes
     model.opt.captioning_weight = opt.captioning_weight
-    --]]
+    
     if cudnn then
       cudnn.convert(model.net, cudnn)
       cudnn.convert(model.nets.localization_layer.nets.rpn, cudnn)

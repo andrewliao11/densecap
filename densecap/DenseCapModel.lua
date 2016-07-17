@@ -552,7 +552,10 @@ function DenseCapModel:backward(input, gradOutput)
   dout = self.nets.languageEncoder:backward(self.net:get(4).output, dout)
   table.remove(dout, 8)
 
-  dout = self.net:get(4):backward(self.net:get(3).output, dout)
+
+  -- Andrew
+  -- not backward pass localization layer
+  --dout = self.net:get(4):backward(self.net:get(3).output, dout)
   --[[
   local end_idx = 3
   if self.finetune_cnn then end_idx = 2 end

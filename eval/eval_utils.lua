@@ -3,7 +3,6 @@ local cjson = require 'cjson'
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
 
-require 'densecap.modules.BoxIoU'
 local eval_utils = {}
 local debugger = require('fb.debugger')
 
@@ -36,12 +35,11 @@ function eval_utils.eval_split(kwargs)
   loader:resetIterator(split)
   local evaluator = DenseCaptioningEvaluator{id=id}
 
-  local counter = 0
-  local all_losses = {}
-
   local ious = nn.BoxIoU()
   local total_query = 0
   local hit = 0
+  local counter = 0
+  local all_losses = {}
   while true do
     counter = counter + 1
     
@@ -66,31 +64,24 @@ function eval_utils.eval_split(kwargs)
 
     local losses = model:forward_backward(data)
     table.insert(all_losses, losses)
+
     -- Call forward_test to make predictions, and pass them to evaluator
-    -- Andrew
-    --[[
-    local boxes, logprobs, captions = model:forward_test(data.image)
-    local gt_captions = model.nets.language_model:decodeSequence(gt_labels[1])
-    evaluator:addResult(logprobs, boxes, captions, gt_boxes[1], gt_captions)
-    --]]
-    -- boxes: proposal
-    -- logprobs: objectness score
-    -- pred_IoUs
+
     local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test({data.image, data.gt_labels, data.gt_length})
-    
-    evaluator:addResult(logprobs, boxes, nil, gt_boxes[1])
+
+    evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
     y, i = torch.max(pred_IoUs:float(), 2)
     pos_roi_boxes = pos_roi_boxes:float()
     pred_boxes = pos_roi_boxes:index(1,i:view(-1)):view(1, -1, 4)
-    --debugger.enter()
     for i = 1, pred_boxes:size(2) do
       iou = ious:forward{pred_boxes[1][i]:view(1, -1, 4), gt_boxes[1][i]:float():view(1, -1, 4)}
       iou = iou:view(-1)
       if iou[1] > 0.5 then
-	hit = hit+1
+        hit = hit+1
       end
     end
     total_query = total_query + pred_boxes:size(2)
+
     -- Print a message to the console
     local msg = 'Processed image %s (%d / %d) of split %d, detected %d regions'
     local num_images = info.split_bounds[2]
@@ -99,16 +90,16 @@ function eval_utils.eval_split(kwargs)
     print(string.format(msg, info.filename, counter, num_images, split, num_boxes))
 
     -- Break out if we have processed enough images
-    --if max_images > 0 and counter >= 10 then break end
     if max_images > 0 and counter >= max_images then break end
     if info.split_bounds[1] == info.split_bounds[2] then break end
   end
-  --debugger.enter()
+
   local loss_results = utils.dict_average(all_losses)
   print('Loss stats:')
   print(loss_results)
   print('Average loss: ', loss_results.total_loss)
   print('Precision: ', hit/total_query)
+ 
   local ap_results = evaluator:evaluate()
   print(string.format('mAP: %f', 100 * ap_results.map))
   
@@ -148,17 +139,16 @@ local function pluck_boxes(ix, boxes, text)
     local bsub = boxes:index(1, ixi)
     local newbox = torch.mean(bsub, 1)
     new_boxes[i] = newbox
-
-    local texts = {}
-    if text then
-      for j=1,n do
-        table.insert(texts, text[ixi[j]])
-      end
-    end
-    table.insert(new_text, texts)
+    
+    --local texts = {}
+   -- if text then
+    --  for j=1,n do
+    --    table.insert(texts, text[ixi[j]])
+    --  end
+    --end
+    --table.insert(new_text, texts)
   end
-
-  return new_boxes, new_text
+  return new_boxes
 end
 
 
@@ -174,8 +164,7 @@ end
 -- boxes is (B x 4) are xcycwh, logprobs are (B x 2), target_boxes are (M x 4) also as xcycwh.
 -- these can be both on CPU or on GPU (they will be shipped to CPU if not already so)
 -- predict_text is length B list of strings, target_text is length M list of strings.
--- Andrew remove text related
-function DenseCaptioningEvaluator:addResult(logprobs, boxes, pred_IoUs, target_boxes)
+function DenseCaptioningEvaluator:addResult(logprobs, boxes, text, target_boxes, target_text)
   assert(logprobs:size(1) == boxes:size(1))
   --assert(logprobs:size(1) == #text)
   --assert(target_boxes:size(1) == #target_text)
@@ -192,7 +181,7 @@ function DenseCaptioningEvaluator:addResult(logprobs, boxes, pred_IoUs, target_b
 
   -- merge ground truth boxes that overlap by >= 0.7
   local mergeix = box_utils.merge_boxes(target_boxes, 0.7) -- merge groups of boxes together
-  local merged_boxes, merged_text = pluck_boxes(mergeix, target_boxes, target_text)
+  local merged_boxes= pluck_boxes(mergeix, target_boxes, nil)
 
   -- 1. Sort detections by decreasing confidence
   local Y,IX = torch.sort(logprobs,1,true) -- true makes order descending
@@ -236,8 +225,8 @@ function DenseCaptioningEvaluator:addResult(logprobs, boxes, pred_IoUs, target_b
     local record = {}
     record.ok = ok -- whether this prediction can be counted toward a true positive
     record.ov = ovmax
-    record.candidate = text[ii]
-    record.references = merged_text[jmax] -- will be nil if jmax stays -1
+    --record.candidate = text[ii]
+    --record.references = merged_text[jmax] -- will be nil if jmax stays -1
     -- Replace nil with empty table to prevent crash in meteor bridge
     if record.references == nil then record.references = {} end
     record.imgid = self.n
@@ -258,12 +247,13 @@ function DenseCaptioningEvaluator:evaluate(verbose)
   -- concatenate everything across all images
   local logprobs = torch.cat(self.all_logprobs, 1) -- concat all logprobs
   -- call python to evaluate all records and get their BLEU/METEOR scores
-  local blob = eval_utils.score_captions(self.records, self.id) -- replace in place (prev struct will be collected)
-  local scores = blob.scores -- scores is a list of scores, parallel to records
+  -- local blob = eval_utils.score_captions(self.records, self.id) -- replace in place (prev struct will be collected)
+  --local scores = blob.scores -- scores is a list of scores, parallel to records
   collectgarbage()
   collectgarbage()
 
   -- prints/debugging
+   --[[
   if verbose then
     for k=1,#self.records do
       local record = self.records[k]
@@ -271,12 +261,13 @@ function DenseCaptioningEvaluator:evaluate(verbose)
         local txtgt = ''
         assert(type(record.references) == "table")
         for kk,vv in pairs(record.references) do txtgt = txtgt .. vv .. '. ' end
+	-- Andrew
         print(string.format('IMG %d PRED: %s, GT: %s, OK: %d, OV: %f SCORE: %f',
-              record.imgid, record.candidate, txtgt, record.ok, record.ov, scores[k]))
+              record.imgid, nil, txtgt, record.ok, record.ov, scores[k]))
       end  
     end
   end
-
+--]]
   -- lets now do the evaluation
   local y,ix = torch.sort(logprobs,1,true) -- true makes order descending
 
@@ -298,8 +289,8 @@ function DenseCaptioningEvaluator:evaluate(verbose)
           fp[i] = 1 -- nothing aligned to this predicted box in the ground truth
         else
           -- ok something aligned. Lets check if it aligned enough, and correctly enough
-          local score = scores[ii]
-          if r.ov >= min_overlap and r.ok == 1 and score > min_score then
+          --local score = scores[ii]
+          if r.ov >= min_overlap and r.ok == 1 then
             tp[i] = 1
           else
             fp[i] = 1
