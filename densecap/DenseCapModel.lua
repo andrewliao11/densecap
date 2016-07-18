@@ -409,13 +409,12 @@ function DenseCapModel:updateOutput(input)
     table.insert(out, self.gt_labels[1])
     self.nets.languageEncoder = self:_buildLanguageEncoder()
 
-
     out = self.nets.languageEncoder:forward(out)
     out[5] = out[5]:float()
     self.nets.selectModel = self:_buildSelectModel(self.gt_length)
     out = self.nets.selectModel:forward(out)
     out[8] = out[8]:float()
-    self.nets.fusingModel = self:_buildFusingModel()
+    self.nets.fusingModel = self:_buildFusingModel(out[2]:size(1))
     out = self.nets.fusingModel:forward(out)
 
     out[5] = out[5]:cuda()
@@ -501,7 +500,7 @@ function DenseCapModel:forward_test(input)
   --[[
   table.insert(out, input[2])
   self.nets.languageEncoder = self:_buildLanguageEncoder()
-
+  debugger.enter()
   out = self.nets.languageEncoder:forward(out)
   out[5] = out[5]:float()
   self.nets.selectModel = self:_buildSelectModel(input[3])
@@ -548,6 +547,7 @@ function DenseCapModel:backward(input, gradOutput)
 
   local layer_input = self.nets.selectModel.output
   local dout = self.nets.fusingModel:backward(layer_input, gradOutput)
+
 
   layer_input = self.nets.languageEncoder.output
   dout = self.nets.selectModel:backward(layer_input, dout)
@@ -625,7 +625,6 @@ function DenseCapModel:forward_backward(data)
 
   -- Run the model forward
   self:setGroundTruth(data.gt_boxes, data.gt_labels, data.gt_length)
-
   local out = self:forward(data.image)
   table.insert(out, data.gt_labels[1])
   self.nets.languageEncoder = self:_buildLanguageEncoder()

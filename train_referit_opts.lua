@@ -73,7 +73,7 @@ function M.parse(arg)
     'Load model from a checkpoint instead of random initialization.')
   cmd:option('-finetune_cnn_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
-  cmd:option('-val_images_use', 100,
+  cmd:option('-val_images_use', 1000,
     'Number of validation images to use for evaluation; -1 to use all')
 
   -- Model checkpointing
