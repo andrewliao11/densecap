@@ -19,7 +19,7 @@ require 'densecap.optim_updates'
 local utils = require 'densecap.utils'
 local opts = require 'train_referit_opts'
 local models = require 'models'
-local eval_utils = require 'eval.eval_utils'
+local eval_utils = require 'eval.eval_utils_referit'
 local debugger = require('fb.debugger')
 -------------------------------------------------------------------------------
 -- Initializations
@@ -70,6 +70,7 @@ local function lossFun()
 
   -- Fetch data using the loader
   local timer = torch.Timer()
+
   local info
   local data = {}
   while true do
@@ -78,6 +79,7 @@ local function lossFun()
 	break
     end
   end
+
   for k, v in pairs(data) do
     data[k] = v:type(dtype)
   end

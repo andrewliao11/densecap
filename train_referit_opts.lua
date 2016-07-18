@@ -105,7 +105,7 @@ function M.parse(arg)
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')
-  cmd:option('-eval_first_iteration',0,
+  cmd:option('-eval_first_iteration',1,
     'evaluate on first iteration? 1 = do, 0 = dont.')
 
   cmd:text()

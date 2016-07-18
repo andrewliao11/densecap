@@ -545,13 +545,13 @@ function DenseCapModel:backward(input, gradOutput)
 
   local layer_input = self.nets.selectModel.output
   local dout = self.nets.fusingModel:backward(layer_input, gradOutput)
+
   layer_input = self.nets.languageEncoder.output
   dout = self.nets.selectModel:backward(layer_input, dout)
   dout[5] = dout[5]:cuda()
   dout[8] = dout[8]:cuda()
   dout = self.nets.languageEncoder:backward(self.net:get(4).output, dout)
   table.remove(dout, 8)
-
 
   -- Andrew
   -- not backward pass localization layer

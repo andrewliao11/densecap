@@ -125,6 +125,11 @@ function helper:updateOutput(input)
     self.output[2][i] = self.output[2][i]:view(self.num_pos, D)
   end
 
+
+  -- Andrew
+  --table.insert(self.output, idxs[2])
+  --debugger.enter()
+
   return self.output
 end
 

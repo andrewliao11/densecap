@@ -42,6 +42,7 @@ function DataLoader:__init(opt)
   self.vocab_size = #self.info.idx_to_token+1	-- +1: the <end> 
 
   print('DataLoader loading')
+  self.filename = nil
   self.max_words = utils.getopt(opt, 'max_words')
   self.trn_imlist_file = utils.getopt(opt, 'trn_imlist_file')
   self.trn_imlist = utils.read_txt(self.trn_imlist_file)
@@ -56,7 +57,6 @@ function DataLoader:__init(opt)
   self.imcrop_bbox = utils.read_json(self.imcrop_bbox_file)
   self.query_file = utils.getopt(opt, 'query_file')
   self.raw_query = utils.read_json(self.query_file)
-
 
   self.query = {}
   for k,v in pairs(self.raw_query) do
@@ -215,6 +215,22 @@ end
   The data is iterated linearly in order. Iterators for any split can be reset manually with resetIterator()
   Returning random examples is also supported by passing in .iterate = false in opt.
 --]]
+
+
+function DataLoader:getFilename()
+  return self.filename
+end
+
+function DataLoader:testIfOutOfBound()
+
+  if self.ri > #self.test_imlist then
+    return true
+  else
+    return false
+  end
+
+end
+
 function DataLoader:getBatch(opt)
 
   --TODO
@@ -231,12 +247,12 @@ function DataLoader:getBatch(opt)
   -- pick an index of the datapoint to load next
   local ri -- ri is iterator position in local coordinate system of split_ix for this split
   local max_index
+
   if split == 0 then
      max_index = self.num_trn_images
   else 
      max_index = self.num_test_images
   end
-
 
   -- pick the training sample
   --if self.debug_max_train_images > 0 then max_index = self.debug_max_train_images end
@@ -249,7 +265,7 @@ function DataLoader:getBatch(opt)
     -- pick an index randomly
     ri = torch.random(max_index)
   end
-
+  self.ri = ri
   --[[
   ix = split_ix[ri]
   assert(ix ~= nil, 'bug: split ' .. split .. ' was accessed out of bounds with ' .. ri)
@@ -261,8 +277,13 @@ function DataLoader:getBatch(opt)
 
   --TODO load the image
   img_dir = '/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/datasets/ReferIt/ImageCLEF/images/'
-  local im_name = self.trn_imlist[ri]
-  print (im_name)
+  local im_name
+  if split == 0 then
+    im_name = self.trn_imlist[ri]
+  else
+    im_name = self.test_imlist[ri]
+  end
+  self.filename = im_name
   img = image.load(img_dir .. im_name .. '.jpg')
   img = img:view(1, img:size(1), img:size(2), img:size(3))*255
   img:add(-1, self.vgg_mean:expandAs(img)) -- subtract vgg mean
@@ -281,19 +302,16 @@ function DataLoader:getBatch(opt)
     count = count + #self.query[v]
   end
 
-  if count == 0 then 
-    debugger.enter()
-  end 
-
   local box_batch = torch.zeros(1,count,4)
   local label_array = torch.zeros(1,count, self.max_words)
   local i = 1
   for k,v in pairs(self.imcrop[im_name]) do
     for j = 1,#self.query[v] do
       label_array[1][i] = self.query[v][j]
-      for ii = 1,4 do
-      	box_batch[1][i][ii] = self.imcrop_bbox[v][ii]
-      end
+      box_batch[1][i][1] = (self.imcrop_bbox[v][1]+self.imcrop_bbox[v][3])/2
+      box_batch[1][i][2] = (self.imcrop_bbox[v][2]+self.imcrop_bbox[v][4])/2
+      box_batch[1][i][3] = (self.imcrop_bbox[v][3]-self.imcrop_bbox[v][1])
+      box_batch[1][i][4] = (self.imcrop_bbox[v][4]+self.imcrop_bbox[v][2])
       i = i+1
     end
   end
