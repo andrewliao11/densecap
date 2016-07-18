@@ -46,7 +46,8 @@ function eval_utils.eval_split(kwargs)
     -- Grab a batch of data and convert it to the right dtype
     local data = {}
     local loader_kwargs = {split=split, iterate=true}
-    local img, gt_boxes, gt_labels, info, _ = loader:getBatch(loader_kwargs)
+    img, gt_boxes, gt_labels, info, _ = loader:getBatch(loader_kwargs)
+
     local data = {
       image = img:type(dtype),
       gt_boxes = gt_boxes:type(dtype),
@@ -88,7 +89,6 @@ function eval_utils.eval_split(kwargs)
     if max_images > 0 then num_images = math.min(num_images, max_images) end
     local num_boxes = boxes:size(1)
     print(string.format(msg, info.filename, counter, num_images, split, num_boxes))
-
     -- Break out if we have processed enough images
     if max_images > 0 and counter >= max_images then break end
     if info.split_bounds[1] == info.split_bounds[2] then break end
