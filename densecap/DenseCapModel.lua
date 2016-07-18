@@ -152,7 +152,8 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
   self.crits.box_reg_crit = nn.BoxRegressionCriterion(opt.end_box_reg_weight)
-  self.crits.IoUs_crit = nn.SmoothL1Criterion()
+  self.crits.score_crit = nn.CrossEntropyCriterion()
+  --self.crits.IoUs_crit = nn.SmoothL1Criterion()
   --self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
 
   self:training()
@@ -234,7 +235,7 @@ function DenseCapModel:_buildLanguageEncoder()
 
 end
 
-function DenseCapModel:_buildFusingModel()
+function DenseCapModel:_buildFusingModel(num_proposals)
 
   local objectness_scores = nn.Identity()()
   local pos_roi_boxes = nn.Identity()()
@@ -250,6 +251,8 @@ function DenseCapModel:_buildFusingModel()
 
   local ious_input = {lm_output_end, pos_roi_feat} 
   local pred_IoUs = nn.MM(false, true)(ious_input)
+  -- Andrew
+  local pred_scores = nn.Linear(num_proposals,num_proposals)
  
   local inputs = {
     objectness_scores,
@@ -609,6 +612,14 @@ Input: data is table with the following keys:
   TODO: What format are the boxes?
 - gt_labels: 1 x B x L array of ground-truth sequences for boxes
 --]]
+function DenseCapModel:getTarget(num_proposals, ious)
+
+  local num_query = self.gt_labels:size(2)
+  local num_proposals = num_proposals
+  local max, idx = torch.max(ious[1],1)
+  return idx[1]
+end
+
 function DenseCapModel:forward_backward(data)
   self:training()
 
@@ -616,7 +627,6 @@ function DenseCapModel:forward_backward(data)
   self:setGroundTruth(data.gt_boxes, data.gt_labels, data.gt_length)
 
   local out = self:forward(data.image)
-  
   table.insert(out, data.gt_labels[1])
   self.nets.languageEncoder = self:_buildLanguageEncoder()
 
@@ -625,7 +635,8 @@ function DenseCapModel:forward_backward(data)
   self.nets.selectModel = self:_buildSelectModel(data.gt_length)
   out = self.nets.selectModel:forward(out)
   out[8] = out[8]:float()
-  self.nets.fusingModel = self:_buildFusingModel()
+  local num_proposals = out[2]:size(1)
+  self.nets.fusingModel = self:_buildFusingModel(num_proposals)
   out = self.nets.fusingModel:forward(out)
   out[5] = out[5]:cuda()
   out[8] = out[8]:cuda()
@@ -674,17 +685,34 @@ function DenseCapModel:forward_backward(data)
   local grad_lm_output = self.crits.lm_crit:backward(lm_output, target)
   grad_lm_output:mul(self.opt.captioning_weight)
   --]]
+
+
+  local score_loss
+  local grad_score
+  if pos_roi_boxes:size(1) ~= 1 then
+    local target = self:getTarget(num_proposals, IoUs):cuda()
+    score_loss = self.crits.score_crit:forward(pred_IoUs, target)
+    grad_score = self.crits.score_crit:backward(pred_IoUs, target)
+  else 
+    grad_loss = 0
+    grad_score = torch.zeros(pred_IoUs:size()):cuda()
+    print ('Only one proposal :(')
+  end
+  --[[
+  debugger.enter()
   local IoUs_loss = self.crits.IoUs_crit:forward(pred_IoUs, IoUs)
   IoUs_loss = IoUs_loss * 1
   local grad_IoUs = self.crits.IoUs_crit:backward(pred_IoUs, IoUs)
   grad_IoUs:mul(1)
+  --]]
+
   local ll_losses = self.nets.localization_layer.stats.losses
   local losses = {
     mid_objectness_loss=ll_losses.obj_loss_pos + ll_losses.obj_loss_neg,
     mid_box_reg_loss=ll_losses.box_reg_loss,
     end_objectness_loss=end_objectness_loss,
     end_box_reg_loss=end_box_reg_loss,
-    IoUs_loss = IoUs_loss
+    score_loss = score_loss
     --captioning_loss=captioning_loss,
   }
   local sum = 0
@@ -703,8 +731,8 @@ function DenseCapModel:forward_backward(data)
   grad_out[5] = lm_output.new(#lm_output):zero():float()
   grad_out[6] = gt_boxes.new(#gt_boxes):zero()
   grad_out[7] = gt_labels.new(#gt_labels):zero()
-  grad_out[8] = grad_IoUs:float()
-  self:backward(input, grad_out)
+  grad_out[8] = grad_score:float()
 
+  self:backward(input, grad_out)
   return losses
 end
