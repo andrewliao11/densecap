@@ -24,6 +24,7 @@ local debugger = require('fb.debugger')
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
+local model_name = 'ious0.5'
 local opt = opts.parse(arg)
 print(opt)
 torch.setdefaulttensortype('torch.FloatTensor')
@@ -205,7 +206,7 @@ while true do
         cudnn.convert(model.nets.localization_layer.nets.rpn, nn)
       end
       torch.save(opt.checkpoint_path, checkpoint)
-      print('wrote ' .. opt.checkpoint_path)
+      print('wrote ' .. opt.checkpoint_path .. model_name)
 
       -- Now go back to CUDA and cuDNN
       model:cuda()

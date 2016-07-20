@@ -152,7 +152,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
   self.crits.box_reg_crit = nn.BoxRegressionCriterion(opt.end_box_reg_weight)
-  self.crits.score_crit = nn.CrossEntropyCriterion()
+  self.crits.score_crit = nn.MultiLabelMarginCriterion()
   --self.crits.IoUs_crit = nn.SmoothL1Criterion()
   --self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
 
@@ -191,7 +191,8 @@ function DenseCapModel:_buildFusingModel()
   local lm_output_end = nn.Identity()()
 
   local ious_input = {lm_output_end, pos_roi_feat} 
-  local pred_IoUs = nn.MM(false, true)(ious_input)
+  local pred_score = nn.MM(false, true)(ious_input)
+  pred_score = nn.Sigmoid()(pred_score)
   -- Andrew
   --local pred_scores = nn.Linear(num_proposals,num_proposals)
  
@@ -205,7 +206,7 @@ function DenseCapModel:_buildFusingModel()
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
     lm_output_end,
-    gt_boxes, gt_labels , pred_IoUs
+    gt_boxes, gt_labels , pred_score
   }
 
   local mod = nn.gModule(inputs, outputs)
@@ -347,8 +348,6 @@ function DenseCapModel:updateOutput(data)
 
   local recog_output = self.net:forward(input)
     
-
-
   local lm_output = self.nets.languageEncoder:forward({data.gt_labels[1], mask:cuda()})
   table.insert(recog_output, lm_output)
 
@@ -531,8 +530,15 @@ function DenseCapModel:getTarget(num_proposals, ious)
 
   local num_query = self.gt_labels:size(2)
   local num_proposals = num_proposals
-  local max, idx = torch.max(ious[1],1)
-  return idx[1]
+  local target = torch.zeros(num_query, num_proposals)
+  local idx = torch.nonzero(ious:ge(0.5)[1]:float())
+  local start = torch.ones(num_query)
+  for i = 1, idx:size(1) do 
+    local q = idx[i][1]
+    target[q][start[q]] = idx[i][2]
+    start[q] = start[q]+1
+  end
+  return target
 end
 
 function DenseCapModel:forward_backward(data)
@@ -558,7 +564,7 @@ function DenseCapModel:forward_backward(data)
   local boxes_view = pos_roi_boxes:view(1, -1, 4)
   local gt_boxes_view = self.gt_boxes:view(1, -1, 4)
   local box_iou = nn.BoxIoU():type(gt_boxes:type())
-  local IoUs = box_iou:forward{boxes_view, gt_boxes_view}  -- N x M
+  local IoUs = box_iou:forward{gt_boxes_view, boxes_view}  -- N x M
 
   -- Compute final objectness loss and gradient
   local objectness_labels = torch.LongTensor(num_boxes):zero()
@@ -591,7 +597,7 @@ function DenseCapModel:forward_backward(data)
   local score_loss
   local grad_score
   if pos_roi_boxes:size(1) ~= 1 then
-    local target = self:getTarget(num_proposals, IoUs):cuda()
+    local target = self:getTarget(pred_IoUs:size(2), IoUs):cuda()
     score_loss = self.crits.score_crit:forward(pred_IoUs, target)
     grad_score = self.crits.score_crit:backward(pred_IoUs, target)
   else 
