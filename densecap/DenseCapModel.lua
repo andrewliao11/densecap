@@ -533,10 +533,13 @@ function DenseCapModel:getTarget(num_proposals, ious)
   local target = torch.zeros(num_query, num_proposals)
   local idx = torch.nonzero(ious:ge(0.5)[1]:float())
   local start = torch.ones(num_query)
-  for i = 1, idx:size(1) do 
-    local q = idx[i][1]
-    target[q][start[q]] = idx[i][2]
-    start[q] = start[q]+1
+
+  if idx:dim() ~= 0 then
+    for i = 1, idx:size(1) do 
+      local q = idx[i][1]
+      target[q][start[q]] = idx[i][2]
+      start[q] = start[q]+1
+    end
   end
   return target
 end
