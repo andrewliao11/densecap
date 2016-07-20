@@ -230,7 +230,8 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
-  local pos_roi_feat = nn.Linear(4096,512)(pos_roi_codes)
+  local local_feat = nn.JoinTable(2)({pos_roi_codes, pos_roi_boxes})
+  local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
 
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
@@ -346,6 +347,8 @@ function DenseCapModel:updateOutput(data)
 
   local recog_output = self.net:forward(input)
     
+
+
   local lm_output = self.nets.languageEncoder:forward({data.gt_labels[1], mask:cuda()})
   table.insert(recog_output, lm_output)
 
@@ -418,21 +421,6 @@ function DenseCapModel:forward_test(data)
   self:setGroundTruth(nil, data.gt_labels, data.gt_length, data.mask)
 
   local out = self:forward(data)
-  --[[
-  table.insert(out, input[2])
-  self.nets.languageEncoder = self:_buildLanguageEncoder()
-  debugger.enter()
-  out = self.nets.languageEncoder:forward(out)
-  out[5] = out[5]:float()
-  self.nets.selectModel = self:_buildSelectModel(input[3])
-  out = self.nets.selectModel:forward(out)
-  out[8] = out[8]:float()
-  self.nets.fusingModel = self:_buildFusingModel()
-  out = self.nets.fusingModel:forward(out)
-
-  out[5] = out[5]:cuda()
-  out[8] = out[8]:cuda()
-  --]]
   local final_boxes = out[4]
   local pos_roi_boxes = out[2]
   local objectness_scores = out[1]
