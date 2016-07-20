@@ -79,7 +79,6 @@ local function lossFun()
 	break
     end
   end
-
   for k, v in pairs(data) do
     data[k] = v:type(dtype)
   end
@@ -88,6 +87,13 @@ local function lossFun()
   -- create tensor length
   data.gt_length = torch.eq(torch.eq(data.gt_labels,0),0):sum(3)+1
   data.gt_length = data.gt_length:view(-1)
+
+  local max_words = utils.getopt(opt, 'max_words')+1
+  data.mask = torch.zeros(data.gt_labels:size(2), max_words, utils.getopt(opt, 'rnn_size'))
+  for i = 1, data.gt_labels:size(2) do
+    data.mask[i][data.gt_length[i]]:fill(1)
+  end
+
 
   if opt.timing then cutorch.synchronize() end
   local getBatch_time = timer:time().real
@@ -136,6 +142,7 @@ while true do
   local losses, stats = lossFun()
 
   -- Parameter update
+
   adam(params, grad_params, opt.learning_rate, opt.optim_beta1,
        opt.optim_beta2, opt.optim_epsilon, optim_state)
 
@@ -166,7 +173,7 @@ while true do
       max_images=opt.val_images_use,
       dtype=dtype,
     }
-    local results = eval_utils.eval_split(eval_kwargs)
+    local results = eval_utils.eval_split(eval_kwargs, opt)
     -- local results = eval_split(1, opt.val_images_use) -- 1 = validation
     results_history[iter] = results
 

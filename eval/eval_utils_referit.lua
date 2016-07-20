@@ -19,7 +19,7 @@ Input: An object with the following keys:
 - dtype: torch datatype to which data should be cast before passing to the
   model. Default is 'torch.FloatTensor'.
 --]]
-function eval_utils.eval_split(kwargs)
+function eval_utils.eval_split(kwargs, opt)
   local model = utils.getopt(kwargs, 'model')
   local loader = utils.getopt(kwargs, 'loader')
   local split = utils.getopt(kwargs, 'split', 'val')
@@ -69,12 +69,19 @@ function eval_utils.eval_split(kwargs)
     data.gt_length = torch.eq(torch.eq(data.gt_labels,0),0):sum(3)+1
     data.gt_length = data.gt_length:view(-1)
 
+    local max_words = utils.getopt(opt, 'max_words')+1
+    data.mask = torch.zeros(data.gt_labels:size(2), max_words, utils.getopt(opt, 'rnn_size'))
+    for i = 1, data.gt_labels:size(2) do
+      data.mask[i][data.gt_length[i]]:fill(1)
+    end
+
+
     local losses = model:forward_backward(data)
     table.insert(all_losses, losses)
 
     -- Call forward_test to make predictions, and pass them to evaluator
 
-    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test({data.image, data.gt_labels, data.gt_length})
+    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test(data)
 
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
     y, i = torch.max(pred_IoUs:float(), 2)
