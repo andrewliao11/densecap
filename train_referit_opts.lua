@@ -101,7 +101,7 @@ function M.parse(arg)
   cmd:option('-id', '',
     'an id identifying this run/job; useful for cross-validation')
   cmd:option('-seed', 123, 'random number generator seed to use')
-  cmd:option('-gpu', 0, 'which gpu to use. -1 = use CPU')
+  cmd:option('-gpu', 2, 'which gpu to use. -1 = use CPU')
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')

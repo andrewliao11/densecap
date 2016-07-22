@@ -76,7 +76,7 @@ function eval_utils.eval_split(kwargs, opt)
     end
 
 
-    local losses = model:forward_backward(data)
+    local valid, losses = model:forward_backward(data)
     table.insert(all_losses, losses)
 
     -- Call forward_test to make predictions, and pass them to evaluator

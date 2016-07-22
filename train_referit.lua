@@ -110,7 +110,7 @@ local function lossFun()
     model.dump_vars = true
   end
 
-  local losses, stat = model:forward_backward(data)
+  local valid, losses, stat = model:forward_backward(data)
 
   -- Apply L2 regularization
   if opt.weight_decay > 0 then
@@ -127,7 +127,7 @@ local function lossFun()
     loss_history[iter] = losses_copy
   end
 
-  return losses, stats
+  return valid, losses, stats
 end
 
 -------------------------------------------------------------------------------
@@ -140,17 +140,19 @@ local best_val_score = -1
 while true do  
 
   -- Compute loss and gradient
-  local losses, stats = lossFun()
+  local valid, losses, stats = lossFun()
 
   -- Parameter update
 
-  adam(params, grad_params, opt.learning_rate, opt.optim_beta1,
+  if valid then
+    adam(params, grad_params, opt.learning_rate, opt.optim_beta1,
        opt.optim_beta2, opt.optim_epsilon, optim_state)
 
-  -- Make a step on the CNN if finetuning
-  if opt.finetune_cnn_after >= 0 and iter >= opt.finetune_cnn_after then
-    adam(cnn_params, cnn_grad_params, opt.learning_rate,
+    -- Make a step on the CNN if finetuning
+    if opt.finetune_cnn_after >= 0 and iter >= opt.finetune_cnn_after then
+      adam(cnn_params, cnn_grad_params, opt.learning_rate,
          opt.optim_beta1, opt.optim_beta2, opt.optim_epsilon, cnn_optim_state)
+    end
   end
 
   -- print loss and timing/benchmarks

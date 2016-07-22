@@ -19,6 +19,7 @@ function LM:__init(opt)
   self.num_layers = utils.getopt(opt, 'num_layers', 1)
   self.idx_to_token = utils.getopt(opt, 'idx_to_token')
   self.dropout = utils.getopt(opt, 'dropout', 0)
+  self.batchnorm = utils.getopt(opt, 'batchnorm', false)
 
   local W, D = self.input_encoding_size, self.image_vector_dim
   local V, H = self.vocab_size, self.rnn_size
@@ -49,6 +50,15 @@ function LM:__init(opt)
       input_dim = self.input_encoding_size
     end
     self.rnn:add(nn.LSTM(input_dim, self.rnn_size))
+    if self.batchnorm == 1 then
+      local view_in = nn.View(1, 1, -1):setNumInputDims(3)
+      table.insert(self.bn_view_in, view_in)
+      self.net:add(view_in)
+      self.net:add(nn.BatchNormalization(H))
+      local view_out = nn.View(1, -1):setNumInputDims(2)
+      table.insert(self.bn_view_out, view_out)
+      self.net:add(view_out)
+    end
     if self.dropout > 0 then
       self.rnn:add(nn.Dropout(self.dropout))
     end

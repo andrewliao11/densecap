@@ -10,6 +10,7 @@ require 'densecap.modules.ApplyBoxTransform'
 require 'densecap.modules.LogisticCriterion'
 require 'densecap.modules.PosSlicer'
 require 'densecap.modules.BoxIoU'
+require 'densecap.mymodules.magic'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
@@ -144,8 +145,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.net:add(self.nets.recog_net)
 
   self.nets.languageEncoder = self:_buildLanguageEncoder()
-
-  self.nets.fusingModel = self._buildFusingModel()
+  self.nets.fusingModel = self:_buildFusingModel(opt.rnn_size)
   --self.nets.languageEncoder = self:_buildLanguageEncoder()
   --self.net:add(self.nets.languageEncoder)
 
@@ -180,7 +180,7 @@ function DenseCapModel:_buildLanguageEncoder()
 
 end
 
-function DenseCapModel:_buildFusingModel()
+function DenseCapModel:_buildFusingModel(dim_hidden)
 
   local objectness_scores = nn.Identity()()
   local pos_roi_boxes = nn.Identity()()
@@ -191,8 +191,14 @@ function DenseCapModel:_buildFusingModel()
   local pos_roi_feat = nn.Identity()()
   local lm_output_end = nn.Identity()()
 
-  local ious_input = {lm_output_end, pos_roi_feat} 
-  local pred_score = nn.MM(false, true)(ious_input)
+  local magic_input = {lm_output_end, pos_roi_feat} 
+  local magic_out = nn.Magic(dim_hidden)(magic_input)
+  local fusing_out = nn.CMulTable()(magic_out)
+  fusing_out = nn.View(-1,dim_hidden)(fusing_out)
+  local pred_score = nn.Linear(dim_hidden,1)(fusing_out)  -- Q*P,1
+  pred_score = nn.View(-1)(pred_score)
+  --local pred_score = nn.Sum(3)(fusing_out)
+  --local pred_score = nn.MM(false, true)(ious_input)
   pred_score = nn.Sigmoid()(pred_score)
   -- Andrew
   --local pred_scores = nn.Linear(num_proposals,num_proposals)
@@ -424,10 +430,10 @@ function DenseCapModel:forward_test(data)
   local final_boxes = out[4]
   local pos_roi_boxes = out[2]
   local objectness_scores = out[1]
-  local pred_IoUs = out[8]
+  local pred_score = out[8]:view(data.gt_labels:size(2),-1)
   --local captions = output[5]
   --local captions = self.nets.language_model:decodeSequence(captions)
-  return final_boxes, objectness_scores, pred_IoUs, pos_roi_boxes
+  return final_boxes, objectness_scores, pred_score, pos_roi_boxes
 end
 
 
@@ -552,7 +558,6 @@ function DenseCapModel:forward_backward(data)
   self:setGroundTruth(data.gt_boxes, data.gt_labels, data.gt_length, data.mask)
 
   local out = self:forward(data)
-
   -- Pick out the outputs we care about
   local objectness_scores = out[1]
   local pos_roi_boxes = out[2]
@@ -560,7 +565,7 @@ function DenseCapModel:forward_backward(data)
   local lm_output = out[5]
   local gt_boxes = out[6]
   local gt_labels = out[7]
-  local pred_IoUs = out[8]
+  local pred_IoUs = out[8]:view(self.gt_labels:size(2),-1)
 
   local num_boxes = objectness_scores:size(1)
   local num_pos = pos_roi_boxes:size(1)
@@ -600,14 +605,17 @@ function DenseCapModel:forward_backward(data)
 
   local score_loss
   local grad_score
+  local valid = false
   if pos_roi_boxes:size(1) ~= 1 then
     local target = self:getTarget(pred_IoUs:size(2), IoUs):cuda()
     score_loss = self.crits.score_crit:forward(pred_IoUs, target)
     grad_score = self.crits.score_crit:backward(pred_IoUs, target)
+    valid = true
   else 
     grad_loss = 0
     grad_score = torch.zeros(pred_IoUs:size()):cuda()
     print ('Only one proposal :(')
+    
   end
   --[[
   debugger.enter()
@@ -642,7 +650,9 @@ function DenseCapModel:forward_backward(data)
   grad_out[5] = lm_output.new(#lm_output):zero()
   grad_out[6] = gt_boxes.new(#gt_boxes):zero()
   grad_out[7] = gt_labels.new(#gt_labels):zero()
-  grad_out[8] = grad_score
-  self:backward(input, grad_out)
-  return losses
+  grad_out[8] = grad_score:view(-1)
+  if valid then
+    self:backward(input, grad_out)
+  end
+  return valid, losses
 end
