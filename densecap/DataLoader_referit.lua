@@ -304,10 +304,12 @@ function DataLoader:getBatch(opt)
 
   local box_batch = torch.zeros(1,count,4)
   local label_array = torch.zeros(1,count, self.max_words)
+  local raw_query = {}
   local i = 1
   for k,v in pairs(self.imcrop[im_name]) do
     for j = 1,#self.query[v] do
       label_array[1][i] = self.query[v][j]
+      raw_query[i] = self.raw_query[v][j]
       box_batch[1][i][1] = (self.imcrop_bbox[v][1]+self.imcrop_bbox[v][3])/2
       box_batch[1][i][2] = (self.imcrop_bbox[v][2]+self.imcrop_bbox[v][4])/2
       box_batch[1][i][3] = (self.imcrop_bbox[v][3]-self.imcrop_bbox[v][1])
@@ -317,6 +319,10 @@ function DataLoader:getBatch(opt)
   end
   box_batch = box_batch:int()
   label_array = label_array:int()
+
+
+  local info = {}
+  table.insert(info, im_name)
   --[[ 
   local r0 = self.img_to_first_box[ix]
   local r1 = self.img_to_last_box[ix]
@@ -354,6 +360,7 @@ function DataLoader:getBatch(opt)
   -- TODO: start a prefetching thread to load the next image ?
   return img, box_batch, label_array, info_table, obj_boxes
   --]]
-  return count, img, box_batch, label_array
+
+  return count, img, box_batch, label_array, info, raw_query
 end
 

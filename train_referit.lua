@@ -61,6 +61,7 @@ print('total number of parameters in CNN: ', cnn_grad_params:nElement())
 local loss_history = {}
 local all_losses = {}
 local results_history = {}
+local precision_history = {}
 local iter = 0
 local function lossFun()
   grad_params:zero()
@@ -75,7 +76,7 @@ local function lossFun()
   local info
   local data = {}
   while true do
-    num_query, data.image, data.gt_boxes, data.gt_labels, info, data.region_proposals = loader:getBatch()
+    num_query, data.image, data.gt_boxes, data.gt_labels, info, _ = loader:getBatch()
     if num_query ~= 0 then
 	break
     end
@@ -176,10 +177,10 @@ while true do
       max_images=opt.val_images_use,
       dtype=dtype,
     }
-    local results = eval_utils.eval_split(eval_kwargs, opt)
+    local results,_, precision = eval_utils.eval_split(eval_kwargs, opt)
     -- local results = eval_split(1, opt.val_images_use) -- 1 = validation
     results_history[iter] = results
-
+    precision_history[iter] = precision
     -- serialize a json file that has all info except the model
     local checkpoint = {}
     checkpoint.opt = opt
@@ -189,14 +190,16 @@ while true do
     cjson.encode_number_precision(4) -- number of sig digits to use in encoding
     cjson.encode_sparse_array(true, 2, 10)
     local text = cjson.encode(checkpoint)
-    local file = io.open(opt.checkpoint_path .. '.json', 'w')
+    local file = io.open(opt.checkpoint_path .. '-' .. tostring(iter) .. '.json', 'w')
     file:write(text)
     file:close()
-    print('wrote ' .. opt.checkpoint_path .. '.json')
+    print('wrote ' .. opt.checkpoint_path .. '-' .. tostring(iter) .. '.json')
 
     -- Only save t7 checkpoint if there is an improvement in mAP
-    if results.ap_results.map > best_val_score then
-      best_val_score = results.ap_results.map
+    --if results.ap_results.map > best_val_score then
+      --best_val_score = results.ap_results.map
+    if precision > best_val_score then
+      best_val_score = precision
       checkpoint.model = model
 
       -- We want all checkpoints to be CPU compatible, so cast to float and
@@ -207,8 +210,8 @@ while true do
         cudnn.convert(model.net, nn)
         cudnn.convert(model.nets.localization_layer.nets.rpn, nn)
       end
-      torch.save(opt.checkpoint_path, checkpoint)
-      print('wrote ' .. opt.checkpoint_path .. model_name)
+      torch.save(opt.checkpoint_path .. '-' .. tostring(iter), checkpoint)
+      print('wrote ' .. opt.checkpoint_path .. '-' .. tostring(iter))
 
       -- Now go back to CUDA and cuDNN
       model:cuda()

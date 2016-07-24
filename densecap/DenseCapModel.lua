@@ -92,6 +92,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   local x0, y0, sx, sy = net_utils.compute_field_centers(conv_full)
   self.opt.field_centers = {x0, y0, sx, sy}
 
+  --local concat_net = nn.ConcatTable
   -- Localization layer
   if pretrained_model ~= nil then
     self.nets.localization_layer = pretrained_model.net:get(3)
@@ -200,8 +201,6 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   --local pred_score = nn.Sum(3)(fusing_out)
   --local pred_score = nn.MM(false, true)(ious_input)
   pred_score = nn.Sigmoid()(pred_score)
-  -- Andrew
-  --local pred_scores = nn.Linear(num_proposals,num_proposals)
  
   local inputs = {
     objectness_scores,
@@ -354,10 +353,8 @@ function DenseCapModel:updateOutput(data)
   end
 
   local recog_output = self.net:forward(input)
-    
   local lm_output = self.nets.languageEncoder:forward({data.gt_labels[1], mask:cuda()})
   table.insert(recog_output, lm_output)
-
   self.output = self.nets.fusingModel:forward(recog_output)
   -- At test-time, apply NMS to final boxes
   local verbose = false
@@ -409,6 +406,13 @@ function DenseCapModel:extractFeatures(input)
   return boxes_xcycwh, feats
 end
 
+function DenseCapModel:getLocalizationOut(data)
+
+  self:evaluate()
+  self:setGroundTruth(nil, data.gt_labels, data.gt_length, data.mask)
+
+
+end
 
 --[[
 Run a test-time forward pass, plucking out only the relevant outputs.
@@ -423,6 +427,7 @@ Returns:
 - captions: Array of length N giving output captions, decoded as strings.
 --]]
 function DenseCapModel:forward_test(data)
+
   self:evaluate()
   self:setGroundTruth(nil, data.gt_labels, data.gt_length, data.mask)
 
@@ -434,6 +439,7 @@ function DenseCapModel:forward_test(data)
   --local captions = output[5]
   --local captions = self.nets.language_model:decodeSequence(captions)
   return final_boxes, objectness_scores, pred_score, pos_roi_boxes
+
 end
 
 

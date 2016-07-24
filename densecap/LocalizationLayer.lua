@@ -13,7 +13,7 @@ require 'densecap.modules.MakeAnchors'
 -- local net_utils = require 'net_utils'
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
-
+local debugger = require('fb.debugger')
 
 --[[
 A LocalizationLayer wraps up all of the complexities of detection regions and
@@ -310,7 +310,7 @@ function layer:_forward_test(input)
   local verbose = false
   if verbose then
     print('in LocalizationLayer forward_test')
-    print(string.format('Before NMS there are %d boxes', num_boxes))
+    rint(string.format('Before NMS there are %d boxes', num_boxes))
     print(string.format('Using NMS threshold %f', arg.nms_thresh))
   end
 
@@ -448,6 +448,7 @@ function layer:_forward_train(input)
   -- Run the RoI pooling forward for positive boxes
   self:timeit('roi_pooling:forward', function()
     self.nets.roi_pooling:setImageSize(self.image_height, self.image_width)
+    debugger.enter()
     self.roi_features = self.nets.roi_pooling:forward{cnn_features[1], self.roi_boxes}
   end)
 

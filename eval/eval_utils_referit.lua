@@ -1,8 +1,7 @@
-
+local image = require 'image'
 local cjson = require 'cjson'
 local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
-
 local eval_utils = {}
 local debugger = require('fb.debugger')
 
@@ -40,6 +39,7 @@ function eval_utils.eval_split(kwargs, opt)
   local hit = 0
   local counter = 0
   local all_losses = {}
+  local result_boxes = {}
   while true do
     counter = counter + 1
     
@@ -48,7 +48,7 @@ function eval_utils.eval_split(kwargs, opt)
     local loader_kwargs = {split=split, iterate=true}
 
     while true do
-      num_query, img, gt_boxes, gt_labels, info, _ = loader:getBatch()
+      num_query, img, gt_boxes, gt_labels, info, raw_query = loader:getBatch()
       if num_query ~= 0 then
         break
       end
@@ -83,17 +83,38 @@ function eval_utils.eval_split(kwargs, opt)
 
     local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test(data)
 
+    result_boxes[info[1]] = boxes:float()
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
     y, i = torch.max(pred_IoUs:float(), 2)
     pos_roi_boxes = pos_roi_boxes:float()
     pred_boxes = pos_roi_boxes:index(1,i:view(-1)):view(1, -1, 4)
-    for i = 1, pred_boxes:size(2) do
+    img_dir = '/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/datasets/ReferIt/ImageCLEF/images/'
+    -- draw boxes onto image
+    if utils.getopt(kwargs, 'get_box', false) then
+      for i = 1, pred_boxes:size(2) do
+	local new_image = image.load(img_dir .. info[1] .. '.jpg')
+	local img_size = new_image:size()
+        local new_box = box_utils.xcycwh_to_x1y1x2y2(pred_boxes[1][i]:view(1,1,4)):int():view(-1)
+        if new_box[1]-2 < 0 then new_box[1] = 2 end	-- x1
+        if new_box[2]-2 < 0 then new_box[2] = 2 end	-- y1
+        if new_box[3]+2 > img_size[3]-1 then new_box[3] = img_size[3]-2 end	-- x2
+        if new_box[4]+2 > img_size[2]-1 then new_box[4] = img_size[2]-2 end	-- y2
+
+	if math.abs(new_box[3]-new_box[1])>4 and math.abs(new_box[4]-new_box[2])>4 then 
+          new_image = image.drawRect(new_image, new_box[1], new_box[2], new_box[3], new_box[4], {lineWidth = 2, color = {255, 0, 0}})
+          new_image = image.drawText(new_image, raw_query[i], new_box[1], new_box[2],{color = {255, 0, 0}, size = 2})
+          image.save('result/' .. info[1] .. '-' .. tostring(i) .. '.jpg',new_image)
+	end
+      end
+    end
+    for i = 1,pred_boxes:size(2) do
       iou = ious:forward{pred_boxes[1][i]:view(1, -1, 4), gt_boxes[1][i]:float():view(1, -1, 4)}
       iou = iou:view(-1)
       if iou[1] > 0.5 then
         hit = hit+1
       end
     end
+
     total_query = total_query + pred_boxes:size(2)
 
     -- Print a message to the console
@@ -113,6 +134,7 @@ function eval_utils.eval_split(kwargs, opt)
   print('Loss stats:')
   print(loss_results)
   print('Average loss: ', loss_results.total_loss)
+  local precision = hit/total_query
   print('Precision: ', hit/total_query)
  
   local ap_results = evaluator:evaluate()
@@ -122,7 +144,8 @@ function eval_utils.eval_split(kwargs, opt)
     loss_results=loss_results,
     ap_results=ap_results,
   }
-  return out
+  
+  return out, result_boxes, precision
 end
 
 
