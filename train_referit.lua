@@ -76,7 +76,7 @@ local function lossFun()
   local info
   local data = {}
   while true do
-    num_query, data.image, data.gt_boxes, data.gt_labels, info, _ = loader:getBatch()
+    num_query, data.image, data.gt_boxes, data.gt_labels, info, _, data.img_bbox = loader:getBatch()
     if num_query ~= 0 then
 	break
     end

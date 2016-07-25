@@ -448,7 +448,6 @@ function layer:_forward_train(input)
   -- Run the RoI pooling forward for positive boxes
   self:timeit('roi_pooling:forward', function()
     self.nets.roi_pooling:setImageSize(self.image_height, self.image_width)
-    debugger.enter()
     self.roi_features = self.nets.roi_pooling:forward{cnn_features[1], self.roi_boxes}
   end)
 

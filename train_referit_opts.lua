@@ -80,7 +80,7 @@ function M.parse(arg)
   -- originally save_checkpoint_every 10000
   cmd:option('-save_checkpoint_every', 5000,
     'How often to save model checkpoints')
-  cmd:option('-checkpoint_path', './model/checkpoint.t7',
+  cmd:option('-checkpoint_path', './model/new_product/checkpoint.t7',
     'Name of the checkpoint file to use')
 
   -- Test-time model options (for evaluation)

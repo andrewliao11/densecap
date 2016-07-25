@@ -288,6 +288,13 @@ function DataLoader:getBatch(opt)
   img = img:view(1, img:size(1), img:size(2), img:size(3))*255
   img:add(-1, self.vgg_mean:expandAs(img)) -- subtract vgg mean
 
+  local width = img:size(4)
+  local height = img:size(3)
+  local img_bbox = torch.zeros(1,4)
+  img_bbox[1][1] = width/2
+  img_bbox[1][2] = height/2
+  img_bbox[1][3] = width
+  img_bbox[1][4] = height
   --[[
   -- crop image to its original width/height, get rid of padding, and dummy first dim
   img = img[{ 1, {}, {1,self.image_heights[ix]}, {1,self.image_widths[ix]} }]

@@ -14,6 +14,8 @@ expect input[1] is d1,dim
        input[2] is d2,dim
 output is d1,d2,dim
 ]]--
+local debugger = require('fb.debugger')
+
 function Magic:updateOutput(input)
 
 
@@ -39,8 +41,9 @@ function Magic:updateGradInput(input, gradOutput)
    local a1_size = input[1]:size()
    local a2_size = input[2]:size()
    self.gradInput = {}
-   self.gradInput[1] = gradOutput[1]:contiguous():sub(1,a1_size[1],1,1,1,a1_size[2]):squeeze()
-   self.gradInput[2] = gradOutput[2]:contiguous():sub(1,1,1,a2_size[1],1,a2_size[2]):squeeze()
+   self.gradInput[1] = torch.sum(gradOutput[1],2):squeeze()
+   debugger.enter()
+   self.gradInput[2] = torch.sum(gradOutput[2],1):squeeze()
    return self.gradInput
 
 end

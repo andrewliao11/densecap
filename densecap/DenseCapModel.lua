@@ -274,7 +274,6 @@ end
 
 --[[
 Set test-time parameters for this DenseCapModel.
-
 Input: Table with the following keys:
 - rpn_nms_thresh: NMS threshold for region proposals in the RPN; default is 0.7.
 - final_nms_thresh: NMS threshold for final predictions; default is 0.3.
@@ -308,16 +307,13 @@ end
 
 --[[
 Run the model forward.
-
 Input:
 - image: Pixel data for a single image of shape (1, 3, H, W)
-
 After running the model forward, we will process N regions from the
 input image. At training time we have access to the ground-truth regions
 for that image, and assume that there are P ground-truth regions. We assume
 that the language model has a vocabulary of V elements (including the END
 token) and that all captions have been padded to a length of L.
-
 Output: A table of
 - objectness_scores: Array of shape (N, 1) giving (final) objectness scores
   for boxes.
@@ -416,9 +412,7 @@ end
 
 --[[
 Run a test-time forward pass, plucking out only the relevant outputs.
-
 Input: Tensor of shape (1, 3, H, W) giving pixels for an input image.
-
 Returns:
 - final_boxes: Tensor of shape (N, 4) giving coordinates of output boxes
   in (xc, yc, w, h) format.
@@ -529,10 +523,8 @@ end
 --[[
 Perform a (training-time) forward pass to compute output and loss,
 and a backward pass to compute gradients.
-
 This is a nonstandard method, but it allows the DenseCapModel to
 have control over its own Criterions.
-
 Input: data is table with the following keys:
 - image: 1 x 3 x H x W array of pixel data
 - gt_boxes: 1 x B x 4 array of ground-truth object boxes
