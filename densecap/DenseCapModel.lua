@@ -464,7 +464,7 @@ function DenseCapModel:forward_test(data)
   local final_boxes = out[4]
   local pos_roi_boxes = out[2]
   local objectness_scores = out[1]
-  local pred_score = out[8]:view(data.gt_labels:size(2),-1)
+  local pred_score = out[9]:view(data.gt_labels:size(2),-1)
   --local captions = output[5]
   --local captions = self.nets.language_model:decodeSequence(captions)
   return final_boxes, objectness_scores, pred_score, pos_roi_boxes
@@ -641,7 +641,7 @@ function DenseCapModel:forward_backward(data)
   local score_loss
   local grad_score
   local valid = false
-  if pos_roi_boxes:size(1) ~= 1 then
+  if roi_boxes:size(1) ~= 1 then
     local target = self:getTarget(pred_IoUs:size(2), IoUs):cuda()
     score_loss = self.crits.score_crit:forward(pred_IoUs, target)
     grad_score = self.crits.score_crit:backward(pred_IoUs, target)
@@ -687,7 +687,6 @@ function DenseCapModel:forward_backward(data)
   grad_out[7] = gt_labels.new(#gt_labels):zero()
   grad_out[9] = grad_score:view(-1)
   grad_out[8] = out[8].new(#out[8]):zero()
-  debugger.enter()
   if valid then
     self:backward(input, grad_out)
   end
