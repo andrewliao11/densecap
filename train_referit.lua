@@ -136,6 +136,7 @@ end
 local loss0
 local optim_state = {}
 local cnn_optim_state = {}
+local local_optim_state = {}
 local best_val_score = -1
 while true do  
 
