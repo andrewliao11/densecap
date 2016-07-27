@@ -154,6 +154,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.crits = {}
   self.crits.objectness_crit = nn.LogisticCriterion()
   self.crits.box_reg_crit = nn.BoxRegressionCriterion(opt.end_box_reg_weight)
+
   self.crits.score_crit = nn.MultiLabelMarginCriterion()
   --self.crits.IoUs_crit = nn.SmoothL1Criterion()
   --self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
@@ -190,6 +191,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   local gt_boxes = nn.Identity()()
   local gt_labels = nn.Identity()()
   local pos_roi_feat = nn.Identity()()
+  local roi_boxes = nn.Identity()()
   local lm_output_end = nn.Identity()()
 
   local magic_input = {lm_output_end, pos_roi_feat} 
@@ -200,19 +202,19 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   pred_score = nn.View(-1)(pred_score)
   --local pred_score = nn.Sum(3)(fusing_out)
   --local pred_score = nn.MM(false, true)(ious_input)
-  pred_score = nn.Sigmoid()(pred_score)
+  --pred_score = nn.Sigmoid()(pred_score)
  
   local inputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
-    gt_boxes, gt_labels, pos_roi_feat, lm_output_end
+    gt_boxes, gt_labels, pos_roi_feat, roi_boxes, lm_output_end
   }
 
   local outputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
     lm_output_end,
-    gt_boxes, gt_labels , pred_score
+    gt_boxes, gt_labels , roi_boxes, pred_score
   }
 
   local mod = nn.gModule(inputs, outputs)
@@ -220,7 +222,6 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   return mod
    
 end
-
 function DenseCapModel:_buildRecognitionNet()
 
   local roi_feats = nn.Identity()()
@@ -237,7 +238,7 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
-  local local_feat = nn.JoinTable(2)({pos_roi_codes, pos_roi_boxes})
+  local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
   local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
 
   -- Annotate nodes
@@ -251,7 +252,7 @@ function DenseCapModel:_buildRecognitionNet()
   local outputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
-    gt_boxes, gt_labels , pos_roi_feat
+    gt_boxes, gt_labels , pos_roi_feat, roi_boxes
   }
 
   local mod = nn.gModule(inputs, outputs)
@@ -270,8 +271,6 @@ function DenseCapModel:_buildRecognitionNet()
   local roi_codes = self.nets.recog_base(roi_feats)
   local objectness_scores = self.nets.objectness_branch(roi_codes)
 
-  --local pos_roi_codes = nn.PosSlicer(){roi_codes, gt_labels}
-  --local pos_roi_boxes = nn.PosSlicer(){roi_boxes, gt_boxes}
   
   local final_box_trans = self.nets.box_reg_branch(roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){roi_boxes, final_box_trans}
@@ -282,8 +281,6 @@ function DenseCapModel:_buildRecognitionNet()
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
   objectness_scores:annotate{name='objectness_branch'}
-  --pos_roi_codes:annotate{name='code_slicer'}
-  --pos_roi_boxes:annotate{name='box_slicer'}
   final_box_trans:annotate{name='box_reg_branch'}
 
   local inputs = {roi_feats, roi_boxes, gt_boxes, gt_labels}
@@ -500,8 +497,9 @@ function DenseCapModel:backward(input, gradOutput)
   -- actually return gradients with respect to our input.
   local layer_input = self.net.output
   local dout = self.nets.fusingModel:backward(layer_input, gradOutput)
-  local lang_dout = self.nets.languageEncoder:backward({self.gt_labels[1], self.mask:cuda()}, dout[8])
-  table.remove(dout, 8)
+  
+  local lang_dout = self.nets.languageEncoder:backward({self.gt_labels[1], self.mask:cuda()}, dout[9])
+  table.remove(dout, 9)
   layer_input = self.net:get(3).output
   dout = self.net:get(4):backward(layer_input, dout)
   --[[
@@ -601,12 +599,13 @@ function DenseCapModel:forward_backward(data)
   local lm_output = out[5]
   local gt_boxes = out[6]
   local gt_labels = out[7]
-  local pred_IoUs = out[8]:view(self.gt_labels:size(2),-1)
+  local pred_IoUs = out[9]:view(self.gt_labels:size(2),-1)
+  local roi_boxes = out[8]
 
   local num_boxes = objectness_scores:size(1)
   local num_pos = pos_roi_boxes:size(1)
 
-  local boxes_view = pos_roi_boxes:view(1, -1, 4)
+  local boxes_view = roi_boxes:view(1, -1, 4)
   local gt_boxes_view = self.gt_boxes:view(1, -1, 4)
   local box_iou = nn.BoxIoU():type(gt_boxes:type())
   local IoUs = box_iou:forward{gt_boxes_view, boxes_view}  -- N x M
@@ -686,7 +685,9 @@ function DenseCapModel:forward_backward(data)
   grad_out[5] = lm_output.new(#lm_output):zero()
   grad_out[6] = gt_boxes.new(#gt_boxes):zero()
   grad_out[7] = gt_labels.new(#gt_labels):zero()
-  grad_out[8] = grad_score:view(-1)
+  grad_out[9] = grad_score:view(-1)
+  grad_out[8] = out[8].new(#out[8]):zero()
+  debugger.enter()
   if valid then
     self:backward(input, grad_out)
   end

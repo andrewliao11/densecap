@@ -84,7 +84,7 @@ function M.parse(arg)
   -- originally save_checkpoint_every 10000
   cmd:option('-save_checkpoint_every', 5000,
     'How often to save model checkpoints')
-  cmd:option('-checkpoint_path', './model/product_one_label/checkpoint.t7',
+  cmd:option('-checkpoint_path', './model/delete_pos/checkpoint.t7',
     'Name of the checkpoint file to use')
 
   -- Test-time model options (for evaluation)
@@ -109,7 +109,7 @@ function M.parse(arg)
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')
-  cmd:option('-eval_first_iteration',0,
+  cmd:option('-eval_first_iteration',1,
     'evaluate on first iteration? 1 = do, 0 = dont.')
 
   cmd:text()
