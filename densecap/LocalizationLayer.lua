@@ -240,6 +240,7 @@ end
 
 function layer:updateOutput(input)
   if self.train then
+    --return self:_forward_test(input)
     return self:_forward_train(input)
   else
     return self:_forward_test(input)
@@ -433,7 +434,7 @@ function layer:_forward_train(input)
     
     -- Unpack target data
     self.pos_target_boxes, self.pos_target_labels = unpack(self.pos_target_data)
-    
+
     -- Unpack neg data (only scores matter)
     self.neg_boxes = self.neg_data[1]
     self.neg_scores = self.neg_data[4]
@@ -450,6 +451,7 @@ function layer:_forward_train(input)
     self.nets.roi_pooling:setImageSize(self.image_height, self.image_width)
     self.roi_features = self.nets.roi_pooling:forward{cnn_features[1], self.roi_boxes}
   end)
+
 
   -- Compute objectness loss
   self:timeit('objectness_loss:forward', function()

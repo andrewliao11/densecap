@@ -24,7 +24,6 @@ local debugger = require('fb.debugger')
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
-local model_name = 'ious0.5'
 local opt = opts.parse(arg)
 print(opt)
 torch.setdefaulttensortype('torch.FloatTensor')
@@ -51,7 +50,7 @@ local dtype = 'torch.CudaTensor'
 local model = models.setup(opt):type(dtype)
 
 -- get the parameters vector
-local params, grad_params, cnn_params, cnn_grad_params = model:getParameters()
+local params, grad_params, cnn_params, cnn_grad_params, local_params, local_grad_params = model:getParameters()
 print('total number of parameters in net: ', grad_params:nElement())
 print('total number of parameters in CNN: ', cnn_grad_params:nElement())
 
@@ -148,6 +147,12 @@ while true do
   if valid then
     adam(params, grad_params, opt.learning_rate, opt.optim_beta1,
        opt.optim_beta2, opt.optim_epsilon, optim_state)
+
+    -- Make a step on the CNN if finetuning
+    if opt.finetune_local_after >= 0 and iter >= opt.finetune_local_after then
+      adam(local_params, local_grad_params, opt.learning_rate,
+         opt.optim_beta1, opt.optim_beta2, opt.optim_epsilon, local_optim_state)
+    end
 
     -- Make a step on the CNN if finetuning
     if opt.finetune_cnn_after >= 0 and iter >= opt.finetune_cnn_after then

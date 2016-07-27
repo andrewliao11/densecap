@@ -17,11 +17,8 @@ function DataLoader:__init(opt)
   --[[
   self.info = utils.read_json(self.json_file)
   self.vocab_size = utils.count_keys(self.info.idx_to_token)
-
   self.idx_to_token = utils.buildVocab('/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/data/vocabulary.txt')
-
   debugger.enter()
-
   -- Convert keys in idx_to_token from string to integer
   local idx_to_token = {}
   for k, v in pairs(self.info.idx_to_token) do
@@ -335,7 +332,6 @@ function DataLoader:getBatch(opt)
   local r1 = self.img_to_last_box[ix]
   local label_array = self.labels[{ {r0,r1} }]
   local box_batch = self.boxes[{ {r0,r1} }]
-
   -- batch the boxes and labels
   assert(label_array:nDimension() == 2)
   assert(box_batch:nDimension() == 2)
@@ -349,7 +345,6 @@ function DataLoader:getBatch(opt)
   local info_table = { {filename = filename, 
                         split_bounds = {ri, #split_ix},
                         width = w, height = h, ori_width = ow, ori_height = oh} }
-
   -- read regions if applicable
   local obj_boxes -- contains batch of x,y,w,h,score objectness boxes for this image
   if self.obj_boxes_file then
@@ -363,11 +358,9 @@ function DataLoader:getBatch(opt)
     obj_boxes[{ {}, {1,4} }] = boxes_trans
     obj_boxes = obj_boxes:view(1, obj_boxes:size(1), obj_boxes:size(2)) -- make batch
   end
-
   -- TODO: start a prefetching thread to load the next image ?
   return img, box_batch, label_array, info_table, obj_boxes
   --]]
 
   return count, img, box_batch, label_array, info, raw_query
 end
-

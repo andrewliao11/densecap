@@ -90,6 +90,7 @@ function eval_utils.eval_split(kwargs, opt)
     pred_boxes = pos_roi_boxes:index(1,i:view(-1)):view(1, -1, 4)
     img_dir = '/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/datasets/ReferIt/ImageCLEF/images/'
     -- draw boxes onto image
+
     if utils.getopt(kwargs, 'get_box', false) then
       for i = 1, pred_boxes:size(2) do
 	local new_image = image.load(img_dir .. info[1] .. '.jpg')

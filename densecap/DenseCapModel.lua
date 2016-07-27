@@ -259,7 +259,45 @@ function DenseCapModel:_buildRecognitionNet()
   return mod
 end
 
+--[[
+function DenseCapModel:_buildRecognitionNet()
 
+  local roi_feats = nn.Identity()()
+  local roi_boxes = nn.Identity()()
+  local gt_boxes = nn.Identity()()
+  local gt_labels = nn.Identity()()
+
+  local roi_codes = self.nets.recog_base(roi_feats)
+  local objectness_scores = self.nets.objectness_branch(roi_codes)
+
+  --local pos_roi_codes = nn.PosSlicer(){roi_codes, gt_labels}
+  --local pos_roi_boxes = nn.PosSlicer(){roi_boxes, gt_boxes}
+  
+  local final_box_trans = self.nets.box_reg_branch(roi_codes)
+  local final_boxes = nn.ApplyBoxTransform(){roi_boxes, final_box_trans}
+
+  local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
+  local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
+
+  -- Annotate nodes
+  roi_codes:annotate{name='recog_base'}
+  objectness_scores:annotate{name='objectness_branch'}
+  --pos_roi_codes:annotate{name='code_slicer'}
+  --pos_roi_boxes:annotate{name='box_slicer'}
+  final_box_trans:annotate{name='box_reg_branch'}
+
+  local inputs = {roi_feats, roi_boxes, gt_boxes, gt_labels}
+  local outputs = {
+    objectness_scores,
+    roi_boxes, final_box_trans, final_boxes,
+    gt_boxes, gt_labels , pos_roi_feat
+  }
+
+  local mod = nn.gModule(inputs, outputs)
+  mod.name = 'recognition_network'
+  return mod
+end
+--]]
 function DenseCapModel:training()
   parent.training(self)
   self.net:training()
@@ -501,13 +539,13 @@ We naughtily override the module's getParameters method, and return:
 --]]
 function DenseCapModel:getParameters()
   local cnn_params, grad_cnn_params = self.net:get(2):getParameters()
+  local local_params, grad_local_params = self.net:get(3):getParameters()
   local fakenet = nn.Sequential()
-  --fakenet:add(self.net:get(3))
   fakenet:add(self.net:get(4))
   fakenet:add(self.nets.languageEncoder)
   fakenet:add(self.nets.fusingModel)
   local params, grad_params = fakenet:getParameters()
-  return params, grad_params, cnn_params, grad_cnn_params
+  return params, grad_params, cnn_params, grad_cnn_params, local_params, grad_local_params
 end
 
 

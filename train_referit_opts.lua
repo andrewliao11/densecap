@@ -1,5 +1,6 @@
 local M = { }
 
+
 function M.parse(arg)
 
   cmd = torch.CmdLine()
@@ -73,6 +74,9 @@ function M.parse(arg)
     'Load model from a checkpoint instead of random initialization.')
   cmd:option('-finetune_cnn_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
+  cmd:option('-finetune_local_after', 10000,
+    'Start finetuning CNN after this many iterations (-1 = never finetune)')
+
   cmd:option('-val_images_use', 100,
     'Number of validation images to use for evaluation; -1 to use all')
 
@@ -80,7 +84,7 @@ function M.parse(arg)
   -- originally save_checkpoint_every 10000
   cmd:option('-save_checkpoint_every', 5000,
     'How often to save model checkpoints')
-  cmd:option('-checkpoint_path', './model/new_product/checkpoint.t7',
+  cmd:option('-checkpoint_path', './model/product_one_label/checkpoint.t7',
     'Name of the checkpoint file to use')
 
   -- Test-time model options (for evaluation)
@@ -101,11 +105,11 @@ function M.parse(arg)
   cmd:option('-id', '',
     'an id identifying this run/job; useful for cross-validation')
   cmd:option('-seed', 123, 'random number generator seed to use')
-  cmd:option('-gpu', 0, 'which gpu to use. -1 = use CPU')
+  cmd:option('-gpu', 1, 'which gpu to use. -1 = use CPU')
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')
-  cmd:option('-eval_first_iteration',1,
+  cmd:option('-eval_first_iteration',0,
     'evaluate on first iteration? 1 = do, 0 = dont.')
 
   cmd:text()

@@ -42,7 +42,6 @@ function Magic:updateGradInput(input, gradOutput)
    local a2_size = input[2]:size()
    self.gradInput = {}
    self.gradInput[1] = torch.sum(gradOutput[1],2):squeeze()
-   debugger.enter()
    self.gradInput[2] = torch.sum(gradOutput[2],1):squeeze()
    return self.gradInput
 
