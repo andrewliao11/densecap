@@ -74,7 +74,7 @@ function M.parse(arg)
     'Load model from a checkpoint instead of random initialization.')
   cmd:option('-finetune_cnn_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
-  cmd:option('-finetune_local_after', 100000,
+  cmd:option('-finetune_local_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
 
   cmd:option('-val_images_use', 100,
@@ -82,9 +82,9 @@ function M.parse(arg)
 
   -- Model checkpointing
   -- originally save_checkpoint_every 10000
-  cmd:option('-save_checkpoint_every', 5000,
+  cmd:option('-save_checkpoint_every', 1000,
     'How often to save model checkpoints')
-  cmd:option('-checkpoint_path', './model/delete_pos/checkpoint.t7',
+  cmd:option('-checkpoint_path', './model/delete_pos_new/checkpoint.t7',
     'Name of the checkpoint file to use')
 
   -- Test-time model options (for evaluation)

@@ -204,7 +204,7 @@ while true do
     -- Only save t7 checkpoint if there is an improvement in mAP
     --if results.ap_results.map > best_val_score then
       --best_val_score = results.ap_results.map
-    if precision > best_val_score then
+--    if precision > best_val_score then
       best_val_score = precision
       checkpoint.model = model
 
@@ -229,7 +229,7 @@ while true do
       -- All of that nonsense causes the parameter vectors to be reallocated, so
       -- we need to reallocate the params and grad_params vectors.
       params, grad_params, cnn_params, cnn_grad_params = model:getParameters()
-    end
+--    end
   end
     
   -- stopping criterions

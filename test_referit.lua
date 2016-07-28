@@ -85,7 +85,7 @@ local best_val_score = -1
       split='val',
       max_images=opt.val_images_use,
       dtype=dtype,
-      get_box=true
+      get_box=false
     }
     local results, result_boxes = eval_utils.eval_split(eval_kwargs, opt)
     -- local results = eval_split(1, opt.val_images_use) -- 1 = validation

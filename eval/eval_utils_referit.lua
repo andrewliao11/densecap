@@ -81,8 +81,7 @@ function eval_utils.eval_split(kwargs, opt)
 
     -- Call forward_test to make predictions, and pass them to evaluator
 
-    local boxes, logprobs, pred_IoUs, pos_roi_boxes = model:forward_test(data)
-
+    local boxes, logprobs, pred_IoUs, pos_roi_boxes, lm_out, roi_feat = model:forward_test(data)
     result_boxes[info[1]] = boxes:float()
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
     y, i = torch.max(pred_IoUs:float(), 2)
@@ -125,12 +124,32 @@ function eval_utils.eval_split(kwargs, opt)
     local num_boxes = boxes:size(1)
     print(string.format(msg, loader:getFilename(), counter, max_images, split, num_boxes))
 
+    --[[
+    if counter % 100 == 0 then 
+      local loss_results = utils.dict_average(all_losses)
+      print('Loss stats:')
+      print(loss_results)
+      print('Average loss: ', loss_results.total_loss)
+      local precision = hit/total_query
+      print('Precision: ', hit/total_query)
+      print('Languange out:')
+      print(lm_out)
+      print('roi feature[1]:')
+      print(roi_feat[1])
+      local ap_results = evaluator:evaluate()
+      print(string.format('mAP: %f', 100 * ap_results.map))
+
+      local out = {
+        loss_results=loss_results,
+        ap_results=ap_results,
+      }
+    end
+    --]]
     -- Break out if we have processed enough images
     if max_images > 0 and counter >= max_images then break end
     --if info.split_bounds[1] == info.split_bounds[2] then break end
     if loader:testIfOutOfBound() then break end
   end
-
   local loss_results = utils.dict_average(all_losses)
   print('Loss stats:')
   print(loss_results)

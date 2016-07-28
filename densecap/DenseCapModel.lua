@@ -101,7 +101,6 @@ function DenseCapModel:__init(opt, pretrained_model)
   end
   self.net:add(self.nets.localization_layer)
 
-  --debugger.enter()  
 
   -- Recognition base network; FC layers from VGG.
   -- Produces roi_codes of dimension fc_dim.
@@ -138,7 +137,8 @@ function DenseCapModel:__init(opt, pretrained_model)
     seq_length = opt.seq_length,
     idx_to_token = opt.idx_to_token,
     image_vector_dim=fc_dim,
-    batchnorm=true
+    batchnorm=true,
+    num_layers=2
   }
   self.nets.language_model = nn.LanguageModel(lm_opt)
 
@@ -202,7 +202,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   pred_score = nn.View(-1)(pred_score)
   --local pred_score = nn.Sum(3)(fusing_out)
   --local pred_score = nn.MM(false, true)(ious_input)
-  --pred_score = nn.Sigmoid()(pred_score)
+  pred_score = nn.Sigmoid()(pred_score)
  
   local inputs = {
     objectness_scores,
@@ -260,41 +260,6 @@ function DenseCapModel:_buildRecognitionNet()
   return mod
 end
 
---[[
-function DenseCapModel:_buildRecognitionNet()
-
-  local roi_feats = nn.Identity()()
-  local roi_boxes = nn.Identity()()
-  local gt_boxes = nn.Identity()()
-  local gt_labels = nn.Identity()()
-
-  local roi_codes = self.nets.recog_base(roi_feats)
-  local objectness_scores = self.nets.objectness_branch(roi_codes)
-
-  
-  local final_box_trans = self.nets.box_reg_branch(roi_codes)
-  local final_boxes = nn.ApplyBoxTransform(){roi_boxes, final_box_trans}
-
-  local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
-  local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
-
-  -- Annotate nodes
-  roi_codes:annotate{name='recog_base'}
-  objectness_scores:annotate{name='objectness_branch'}
-  final_box_trans:annotate{name='box_reg_branch'}
-
-  local inputs = {roi_feats, roi_boxes, gt_boxes, gt_labels}
-  local outputs = {
-    objectness_scores,
-    roi_boxes, final_box_trans, final_boxes,
-    gt_boxes, gt_labels , pos_roi_feat
-  }
-
-  local mod = nn.gModule(inputs, outputs)
-  mod.name = 'recognition_network'
-  return mod
-end
---]]
 function DenseCapModel:training()
   parent.training(self)
   self.net:training()
@@ -412,7 +377,7 @@ function DenseCapModel:updateOutput(data)
     -- variables dumped by the LocalizationLayer. Do we want to do that?
   end
 
-  return self.output
+  return self.output, recog_output[7]
 end
 
 
@@ -442,7 +407,6 @@ function DenseCapModel:getLocalizationOut(data)
   self:evaluate()
   self:setGroundTruth(nil, data.gt_labels, data.gt_length, data.mask)
 
-
 end
 
 --[[
@@ -460,14 +424,13 @@ function DenseCapModel:forward_test(data)
   self:evaluate()
   self:setGroundTruth(nil, data.gt_labels, data.gt_length, data.mask)
 
-  local out = self:forward(data)
+  local out, roi_feat = self:forward(data)
   local final_boxes = out[4]
   local pos_roi_boxes = out[2]
   local objectness_scores = out[1]
   local pred_score = out[9]:view(data.gt_labels:size(2),-1)
-  --local captions = output[5]
-  --local captions = self.nets.language_model:decodeSequence(captions)
-  return final_boxes, objectness_scores, pred_score, pos_roi_boxes
+  local lm_out = out[5]
+  return final_boxes, objectness_scores, pred_score, pos_roi_boxes, lm_out, roi_feat
 
 end
 
@@ -502,26 +465,7 @@ function DenseCapModel:backward(input, gradOutput)
   table.remove(dout, 9)
   layer_input = self.net:get(3).output
   dout = self.net:get(4):backward(layer_input, dout)
-  --[[
-  local end_idx = 3
-  if self.finetune_cnn then end_idx = 2 end
-  for i = 4, end_idx, -1 do
-    debugger.enter()
-    layer_input = self.net:get(i-1).output
-    dout = self.net:get(i):backward(layer_input, dout)
-  end
-  --]]
-  -- Andrew
-  -- not backward pass localization layer
-  --dout = self.net:get(4):backward(self.net:get(3).output, dout)
-  --[[
-  local end_idx = 3
-  if self.finetune_cnn then end_idx = 2 end
-  for i = 4, end_idx, -1 do
-    layer_input = self.net:get(i-1).output
-    dout = self.net:get(i):backward(layer_input, dout)
-  end
-  --]]
+
   self.gradInput = dout
   return self.gradInput
 end

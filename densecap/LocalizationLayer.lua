@@ -434,7 +434,6 @@ function layer:_forward_train(input)
     
     -- Unpack target data
     self.pos_target_boxes, self.pos_target_labels = unpack(self.pos_target_data)
-
     -- Unpack neg data (only scores matter)
     self.neg_boxes = self.neg_data[1]
     self.neg_scores = self.neg_data[4]
