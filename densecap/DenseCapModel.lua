@@ -11,13 +11,13 @@ require 'densecap.modules.LogisticCriterion'
 require 'densecap.modules.PosSlicer'
 require 'densecap.modules.BoxIoU'
 require 'densecap.mymodules.magic'
+require 'densecap.mymodules.cbp.CompactBilinearPooling'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
 
 local debugger = require('fb.debugger')
 local DenseCapModel, parent = torch.class('DenseCapModel', 'nn.Module')
-
 
 function DenseCapModel:__init(opt, pretrained_model)
 
@@ -194,15 +194,16 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   local roi_boxes = nn.Identity()()
   local lm_output_end = nn.Identity()()
 
+  --[[
   local magic_input = {lm_output_end, pos_roi_feat} 
   local magic_out = nn.Magic(dim_hidden)(magic_input)
   local fusing_out = nn.CMulTable()(magic_out)
   fusing_out = nn.View(-1,dim_hidden)(fusing_out)
   local pred_score = nn.Linear(dim_hidden,1)(fusing_out)  -- Q*P,1
   pred_score = nn.View(-1)(pred_score)
-  --local pred_score = nn.Sum(3)(fusing_out)
-  --local pred_score = nn.MM(false, true)(ious_input)
   pred_score = nn.Sigmoid()(pred_score)
+  --]]
+  local pred_score = nn.CompactBilinearPooling(dim_hidden){lm_output_end, pos_roi_feat}
  
   local inputs = {
     objectness_scores,
@@ -351,7 +352,11 @@ function DenseCapModel:updateOutput(data)
   local recog_output = self.net:forward(input)
   local lm_output = self.nets.languageEncoder:forward({data.gt_labels[1], mask:cuda()})
   table.insert(recog_output, lm_output)
+
   self.output = self.nets.fusingModel:forward(recog_output)
+
+  debugger.enter()
+
   -- At test-time, apply NMS to final boxes
   local verbose = false
   if verbose then

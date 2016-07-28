@@ -77,12 +77,12 @@ function M.parse(arg)
   cmd:option('-finetune_local_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
 
-  cmd:option('-val_images_use', 100,
+  cmd:option('-val_images_use', 500,
     'Number of validation images to use for evaluation; -1 to use all')
 
   -- Model checkpointing
   -- originally save_checkpoint_every 10000
-  cmd:option('-save_checkpoint_every', 1000,
+  cmd:option('-save_checkpoint_every', 5000,
     'How often to save model checkpoints')
   cmd:option('-checkpoint_path', './model/delete_pos_new/checkpoint.t7',
     'Name of the checkpoint file to use')
@@ -105,7 +105,7 @@ function M.parse(arg)
   cmd:option('-id', '',
     'an id identifying this run/job; useful for cross-validation')
   cmd:option('-seed', 123, 'random number generator seed to use')
-  cmd:option('-gpu', 1, 'which gpu to use. -1 = use CPU')
+  cmd:option('-gpu', 0, 'which gpu to use. -1 = use CPU')
   cmd:option('-timing', false, 'whether to time parts of the net')
   cmd:option('-clip_final_boxes', 1,
              'Whether to clip final boxes to image boundar')
