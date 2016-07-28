@@ -17,14 +17,13 @@ require 'densecap.DataLoader_referit'
 require 'densecap.DenseCapModel'
 require 'densecap.optim_updates'
 local utils = require 'densecap.utils'
-local opts = require 'train_referit_opts'
+local opts = require 'test_referit_opts'
 local models = require 'models'
 local eval_utils = require 'eval.eval_utils_referit'
 local debugger = require('fb.debugger')
 -------------------------------------------------------------------------------
 -- Initializations
 -------------------------------------------------------------------------------
-local model_name = 'ious0.5'
 local opt = opts.parse(arg)
 print(opt)
 torch.setdefaulttensortype('torch.FloatTensor')
@@ -48,7 +47,7 @@ opt.idx_to_token = loader.info.idx_to_token
 -- pretrained model
 --opt.checkpoint_start_from = 'checkpoint.t7'
 
-local checkpoint = torch.load('./model/checkpoint.t7-55000')
+local checkpoint = torch.load('./model/delete_pos/checkpoint.t7-10000')
 
 local model = checkpoint.model
 print 'Loaded model'
