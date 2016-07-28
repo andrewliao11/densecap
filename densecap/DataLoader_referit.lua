@@ -275,11 +275,13 @@ function DataLoader:getBatch(opt)
   --TODO load the image
   img_dir = '/home/andrewliao11/Work/Natural-Language-Object-Retrieval-tensorflow/datasets/ReferIt/ImageCLEF/images/'
   local im_name
+
   if split == 0 then
     im_name = self.trn_imlist[ri]
   else
     im_name = self.test_imlist[ri]
   end
+  print(im_name)
   self.filename = im_name
   img = image.load(img_dir .. im_name .. '.jpg')
   img = img:view(1, img:size(1), img:size(2), img:size(3))*255

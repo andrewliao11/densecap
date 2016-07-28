@@ -46,9 +46,8 @@ function eval_utils.eval_split(kwargs, opt)
     -- Grab a batch of data and convert it to the right dtype
     local data = {}
     local loader_kwargs = {split=split, iterate=true}
-
     while true do
-      num_query, img, gt_boxes, gt_labels, info, raw_query = loader:getBatch()
+      num_query, img, gt_boxes, gt_labels, info, raw_query = loader:getBatch(loader_kwargs)
       if num_query ~= 0 then
         break
       end
