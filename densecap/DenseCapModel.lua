@@ -12,6 +12,7 @@ require 'densecap.modules.PosSlicer'
 require 'densecap.modules.BoxIoU'
 require 'densecap.mymodules.magic'
 require 'densecap.mymodules.cbp.CompactBilinearPooling'
+require 'densecap.mymodules.cbp.SignedSquareRoot'
 
 local box_utils = require 'densecap.box_utils'
 local utils = require 'densecap.utils'
@@ -203,8 +204,15 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   pred_score = nn.View(-1)(pred_score)
   pred_score = nn.Sigmoid()(pred_score)
   --]]
-  local pred_score = nn.CompactBilinearPooling(dim_hidden){lm_output_end, pos_roi_feat}
- 
+  local magic_input = {lm_output_end, pos_roi_feat}
+  local magic_out = nn.Magic(dim_hidden)(magic_input)
+  local pred_score = nn.CompactBilinearPooling(4096)(magic_out)
+  pred_score = nn.SignedSquareRoot()(pred_score)
+  pred_score = nn.Normalize(2)(pred_score)
+  pred_score = nn.Linear(4096,1)(pred_score)  -- Q*P,1
+  pred_score = nn.View(-1)(pred_score)
+  pred_score = nn.Sigmoid()(pred_score)
+
   local inputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
@@ -354,8 +362,6 @@ function DenseCapModel:updateOutput(data)
   table.insert(recog_output, lm_output)
 
   self.output = self.nets.fusingModel:forward(recog_output)
-
-  debugger.enter()
 
   -- At test-time, apply NMS to final boxes
   local verbose = false

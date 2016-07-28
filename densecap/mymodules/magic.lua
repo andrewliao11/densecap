@@ -20,26 +20,28 @@ function Magic:updateOutput(input)
 
 
    local a1, a2 = unpack(input)
-   local d1 = a1:size(1)
-   local d2 = a2:size(1)
+   self.d1 = a1:size(1)
+   self.d2 = a2:size(1)
    -- check if the dimension is the same
    assert(a1:size(2)==a2:size(2))
    assert(a1:size(2)==self.dimension)
-   local dim = a1:size(2)
-   local a1_exp = a1:view(d1,1,dim):expand(d1,d2,dim)
-   local a2_exp = a2:view(1,d2,dim):expand(d1,d2,dim)
+   self.dim = a1:size(2)
+   local a1_exp = a1:view(self.d1,1,self.dim):expand(self.d1,self.d2,self.dim)
+   local a2_exp = a2:view(1,self.d2,self.dim):expand(self.d1,self.d2,self.dim)
 
-   self.output[1] = a1_exp
-   self.output[2] = a2_exp
+
+   --self.output[1] = a1_exp
+   --self.output[2] = a2_exp
+   self.output[1] = a1_exp:contiguous():view(self.d1*self.d2, self.dim) 
+   self.output[2] = a2_exp:contiguous():view(self.d1*self.d2, self.dim)
    return self.output
 
 end
 
 function Magic:updateGradInput(input, gradOutput)
 
-
-   local a1_size = input[1]:size()
-   local a2_size = input[2]:size()
+   gradOutput[1] = gradOutput[1]:view(self.d1,self.d2,self.dim)
+   gradOutput[2] = gradOutput[2]:view(self.d1,self.d2,self.dim)
    self.gradInput = {}
    self.gradInput[1] = torch.sum(gradOutput[1],2):squeeze()
    self.gradInput[2] = torch.sum(gradOutput[2],1):squeeze()
