@@ -136,6 +136,7 @@ end
 local loss0
 local optim_state = {}
 local cnn_optim_state = {}
+local local_optim_state = {}
 local best_val_score = -1
 while true do  
 
@@ -227,7 +228,7 @@ while true do
 
       -- All of that nonsense causes the parameter vectors to be reallocated, so
       -- we need to reallocate the params and grad_params vectors.
-      params, grad_params, cnn_params, cnn_grad_params = model:getParameters()
+      params, grad_params, cnn_params, cnn_grad_params, local_params, local_grad_params = model:getParameters()
     end
   end
     
