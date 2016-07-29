@@ -238,11 +238,11 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
-  --local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
-  --local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
+  local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
+  local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
 
-  local pos_roi_feat = nn.Linear(4096,512-4)(roi_codes)
-  pos_roi_feat = nn.JoinTable(2){pos_roi_feat, roi_boxes}
+  --local pos_roi_feat = nn.Linear(4096,512-4)(roi_codes)
+  --pos_roi_feat = nn.JoinTable(2){pos_roi_feat, roi_boxes}
 
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
