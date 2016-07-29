@@ -138,7 +138,7 @@ function DenseCapModel:__init(opt, pretrained_model)
     idx_to_token = opt.idx_to_token,
     image_vector_dim=fc_dim,
     batchnorm=true,
-    num_layers=1
+    num_layers=2
   }
   self.nets.language_model = nn.LanguageModel(lm_opt)
 
