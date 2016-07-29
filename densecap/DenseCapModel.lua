@@ -200,8 +200,6 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   fusing_out = nn.View(-1,dim_hidden)(fusing_out)
   local pred_score = nn.Linear(dim_hidden,1)(fusing_out)  -- Q*P,1
   pred_score = nn.View(-1)(pred_score)
-  --local pred_score = nn.Sum(3)(fusing_out)
-  --local pred_score = nn.MM(false, true)(ious_input)
   --pred_score = nn.Sigmoid()(pred_score)
  
   local inputs = {
@@ -635,10 +633,10 @@ function DenseCapModel:forward_backward(data)
   --]]
   -- Run the model backward
   local grad_out = {}
-  grad_out[1] = out[1].new(#out[1]):zero()
+  --grad_out[1] = out[1].new(#out[1]):zero()
   grad_out[2] = out[2].new(#out[2]):zero()
   grad_out[3] = out[3].new(#out[3]):zero()
-  --grad_out[1] = grad_objectness_scores
+  grad_out[1] = grad_objectness_scores
   --grad_out[2] = grad_pos_roi_boxes
   --grad_out[3] = grad_final_box_trans
   grad_out[4] = out[4].new(#out[4]):zero()
