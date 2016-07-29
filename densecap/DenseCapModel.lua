@@ -138,7 +138,7 @@ function DenseCapModel:__init(opt, pretrained_model)
     idx_to_token = opt.idx_to_token,
     image_vector_dim=fc_dim,
     batchnorm=true,
-    num_layers=2
+    num_layers=1
   }
   self.nets.language_model = nn.LanguageModel(lm_opt)
 
@@ -202,7 +202,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   pred_score = nn.View(-1)(pred_score)
   --local pred_score = nn.Sum(3)(fusing_out)
   --local pred_score = nn.MM(false, true)(ious_input)
-  pred_score = nn.Sigmoid()(pred_score)
+  --pred_score = nn.Sigmoid()(pred_score)
  
   local inputs = {
     objectness_scores,
@@ -238,8 +238,11 @@ function DenseCapModel:_buildRecognitionNet()
   local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
   local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
 
-  local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
-  local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
+  --local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
+  --local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
+
+  local pos_roi_feat = nn.Linear(4096,512-4)(roi_codes)
+  pos_roi_feat = nn.JoinTable(2){pos_roi_feat, roi_boxes}
 
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
@@ -619,11 +622,25 @@ function DenseCapModel:forward_backward(data)
   end
 
   losses.total_loss = sum
+  --[[
+  local losses = {
+    score_loss = score_loss
+  }
+  local sum = 0
+  for k, v in pairs(losses) do
+    sum = sum + v
+  end
+
+  losses.total_loss = sum
+  --]]
   -- Run the model backward
   local grad_out = {}
-  grad_out[1] = grad_objectness_scores
-  grad_out[2] = grad_pos_roi_boxes
-  grad_out[3] = grad_final_box_trans
+  grad_out[1] = out[1].new(#out[1]):zero()
+  grad_out[2] = out[2].new(#out[2]):zero()
+  grad_out[3] = out[3].new(#out[3]):zero()
+  --grad_out[1] = grad_objectness_scores
+  --grad_out[2] = grad_pos_roi_boxes
+  --grad_out[3] = grad_final_box_trans
   grad_out[4] = out[4].new(#out[4]):zero()
   --grad_out[5] = grad_lm_output
   grad_out[5] = lm_output.new(#lm_output):zero()

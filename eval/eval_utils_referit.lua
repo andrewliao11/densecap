@@ -113,7 +113,7 @@ function eval_utils.eval_split(kwargs, opt)
         hit = hit+1
       end
     end
-
+    
     total_query = total_query + pred_boxes:size(2)
 
     -- Print a message to the console

@@ -82,7 +82,7 @@ function M.parse(arg)
 
   -- Model checkpointing
   -- originally save_checkpoint_every 10000
-  cmd:option('-save_checkpoint_every', 5000,
+  cmd:option('-save_checkpoint_every', 2000,
     'How often to save model checkpoints')
   cmd:option('-checkpoint_path', './model/delete_pos_new/checkpoint.t7',
     'Name of the checkpoint file to use')
