@@ -611,26 +611,12 @@ function DenseCapModel:forward_backward(data)
   grad_IoUs:mul(1)
   --]]  
 
-  local target = torch.Tensor(1):cuda()
+  local target = torch.Tensor(1):fill(1):cuda()
   local diff_loss = self.crits.diff_crit:forward(diff, target)
+  diff_loss = diff_loss*0.1
   local grad_diff = self.crits.diff_crit:backward(diff, target)
+  grad_diff:mul(0.1)
   print ('Difference = ' .. tostring(diff[1]))
-  --[[
-  local grad_clip = 20
-  if grad_diff>grad_clip then
-    print('gradient clipping [too big]')
-    local ratio = grad_clip/grad_diff
-    diff_loss = diff_loss*ratio
-    grad_diff:mul(ratio)
-  end
-  if grad_diff<(-grad_clip) then
-    print('gradient clipping [too small]')
-    local ratio = (-grad_clip)/grad_diff
-    diff_loss = diff_loss*ratio
-    grad_diff:mul(ratio)
-  end
-  --]]
-
   grad_diff:clamp(-20,20)
 
   local ll_losses = self.nets.localization_layer.stats.losses

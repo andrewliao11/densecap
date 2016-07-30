@@ -106,6 +106,7 @@ function eval_utils.eval_split(kwargs, opt)
 	end
       end
     end
+
     for i = 1,pred_boxes:size(2) do
       iou = ious:forward{pred_boxes[1][i]:view(1, -1, 4), gt_boxes[1][i]:float():view(1, -1, 4)}
       iou = iou:view(-1)
