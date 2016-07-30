@@ -614,6 +614,7 @@ function DenseCapModel:forward_backward(data)
   local target = torch.Tensor(1):cuda()
   local diff_loss = self.crits.diff_crit:forward(diff, target)
   local grad_diff = self.crits.diff_crit:backward(diff, target)
+  print ('Difference = ' .. tostring(diff[1]))
   --[[
   local grad_clip = 20
   if grad_diff>grad_clip then
