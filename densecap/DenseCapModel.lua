@@ -630,6 +630,7 @@ function DenseCapModel:forward_backward(data)
     grad_diff:mul(ratio)
   end
   --]]
+
   grad_diff:clamp(-20,20)
 
   local ll_losses = self.nets.localization_layer.stats.losses
