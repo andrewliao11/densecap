@@ -156,6 +156,7 @@ function DenseCapModel:__init(opt, pretrained_model)
   self.crits.box_reg_crit = nn.BoxRegressionCriterion(opt.end_box_reg_weight)
 
   self.crits.score_crit = nn.MultiLabelMarginCriterion()
+  self.crits.diff_crit = nn.MSECriterion()
   --self.crits.IoUs_crit = nn.SmoothL1Criterion()
   --self.crits.lm_crit = nn.TemporalCrossEntropyCriterion()
 
@@ -194,14 +195,18 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   local roi_boxes = nn.Identity()()
   local lm_output_end = nn.Identity()()
 
-  local magic_input = {lm_output_end, pos_roi_feat} 
+  local lm_out = nn.Linear(512,512)(lm_output_end)
+  local magic_input = {lm_out, pos_roi_feat} 
   local magic_out = nn.Magic(dim_hidden)(magic_input)
   local fusing_out = nn.CMulTable()(magic_out)
   fusing_out = nn.View(-1,dim_hidden)(fusing_out)
   local pred_score = nn.Linear(dim_hidden,1)(fusing_out)  -- Q*P,1
   pred_score = nn.View(-1)(pred_score)
   --pred_score = nn.Sigmoid()(pred_score)
- 
+  local avg_lm = nn.Mean(1)(nn.Mean(2)(lm_output_end))
+  local avg_roi = nn.Mean(1)(nn.Mean(2)(pos_roi_feat))
+  local diff = nn.CMulTable(1){avg_lm, nn.Power(-1)(avg_roi)}
+
   local inputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
@@ -211,8 +216,8 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   local outputs = {
     objectness_scores,
     pos_roi_boxes, final_box_trans, final_boxes,
-    lm_output_end,
-    gt_boxes, gt_labels , roi_boxes, pred_score
+    lm_out,
+    gt_boxes, gt_labels , roi_boxes, diff, pred_score
   }
 
   local mod = nn.gModule(inputs, outputs)
@@ -429,7 +434,7 @@ function DenseCapModel:forward_test(data)
   local final_boxes = out[4]
   local pos_roi_boxes = out[2]
   local objectness_scores = out[1]
-  local pred_score = out[9]:view(data.gt_labels:size(2),-1)
+  local pred_score = out[10]:view(data.gt_labels:size(2),-1)
   local lm_out = out[5]
   return final_boxes, objectness_scores, pred_score, pos_roi_boxes, lm_out, roi_feat
 
@@ -544,8 +549,9 @@ function DenseCapModel:forward_backward(data)
   local lm_output = out[5]
   local gt_boxes = out[6]
   local gt_labels = out[7]
-  local pred_IoUs = out[9]:view(self.gt_labels:size(2),-1)
+  local pred_IoUs = out[10]:view(self.gt_labels:size(2),-1)
   local roi_boxes = out[8]
+  local diff = out[9]
 
   local num_boxes = objectness_scores:size(1)
   local num_pos = pos_roi_boxes:size(1)
@@ -572,6 +578,7 @@ function DenseCapModel:forward_backward(data)
                                 gt_boxes)
   local din = self.crits.box_reg_crit:backward(
                          {pos_roi_boxes, final_box_trans},
+
                          gt_boxes)
   local grad_pos_roi_boxes, grad_final_box_trans = unpack(din)
   --[[
@@ -595,7 +602,6 @@ function DenseCapModel:forward_backward(data)
     grad_loss = 0
     grad_score = torch.zeros(pred_IoUs:size()):cuda()
     print ('Only one proposal :(')
-    
   end
   --[[
   debugger.enter()
@@ -605,13 +611,20 @@ function DenseCapModel:forward_backward(data)
   grad_IoUs:mul(1)
   --]]  
 
+  local target = torch.Tensor(1):cuda()
+  local diff_loss = self.crits.diff_crit:forward(diff, target)
+  diff_loss = diff_loss*0.01
+  local grad_diff = self.crits.diff_crit:backward(diff, target)
+  grad_diff:mul(0.01)
+
   local ll_losses = self.nets.localization_layer.stats.losses
   local losses = {
     mid_objectness_loss=ll_losses.obj_loss_pos + ll_losses.obj_loss_neg,
     mid_box_reg_loss=ll_losses.box_reg_loss,
     end_objectness_loss=end_objectness_loss,
     end_box_reg_loss=end_box_reg_loss,
-    score_loss = score_loss
+    score_loss = score_loss, 
+    diff_loss = diff_loss
     --captioning_loss=captioning_loss,
   }
   local sum = 0
@@ -644,8 +657,9 @@ function DenseCapModel:forward_backward(data)
   grad_out[5] = lm_output.new(#lm_output):zero()
   grad_out[6] = gt_boxes.new(#gt_boxes):zero()
   grad_out[7] = gt_labels.new(#gt_labels):zero()
-  grad_out[9] = grad_score:view(-1)
+  grad_out[10] = grad_score:view(-1)
   grad_out[8] = out[8].new(#out[8]):zero()
+  grad_out[9] = grad_diff
   if valid then
     self:backward(input, grad_out)
   end

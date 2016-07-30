@@ -69,7 +69,7 @@ function M.parse(arg)
   cmd:option('-optim_beta2', 0.999, 'beta2 for adam')
   cmd:option('-optim_epsilon', 1e-8, 'epsilon for smoothing')
   cmd:option('-drop_prob', 0.5, 'Dropout strength throughout the model.')
-  cmd:option('-max_iters', -1, 'Number of iterations to run; -1 to run forever')
+  cmd:option('-max_iters', 22000, 'Number of iterations to run; -1 to run forever')
   cmd:option('-checkpoint_start_from', '',
     'Load model from a checkpoint instead of random initialization.')
   cmd:option('-finetune_cnn_after', -1,
