@@ -80,7 +80,7 @@ function eval_utils.eval_split(kwargs, opt)
 
     -- Call forward_test to make predictions, and pass them to evaluator
 
-    local boxes, logprobs, pred_IoUs, pos_roi_boxes, lm_out, roi_feat = model:forward_test(data)
+    local boxes, logprobs, pred_IoUs, pos_roi_boxes, lm_out, roi_feat, diff = model:forward_test(data)
     result_boxes[info[1]] = boxes:float()
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
     y, i = torch.max(pred_IoUs:float(), 2)

@@ -203,7 +203,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   local pred_score = nn.Linear(dim_hidden,1)(fusing_out)  -- Q*P,1
   pred_score = nn.View(-1)(pred_score)
   --pred_score = nn.Sigmoid()(pred_score)
-  local avg_lm = nn.Mean(1)(nn.Mean(2)(lm_output_end))
+  local avg_lm = nn.Mean(1)(nn.Mean(2)(lm_out))
   local avg_roi = nn.Mean(1)(nn.Mean(2)(pos_roi_feat))
   local diff = nn.CMulTable(1){avg_lm, nn.Power(-1)(avg_roi)}
 
@@ -225,6 +225,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   return mod
    
 end
+
 function DenseCapModel:_buildRecognitionNet()
 
   local roi_feats = nn.Identity()()
@@ -436,7 +437,8 @@ function DenseCapModel:forward_test(data)
   local objectness_scores = out[1]
   local pred_score = out[10]:view(data.gt_labels:size(2),-1)
   local lm_out = out[5]
-  return final_boxes, objectness_scores, pred_score, pos_roi_boxes, lm_out, roi_feat
+  
+  return final_boxes, objectness_scores, pred_score, pos_roi_boxes, lm_out, roi_feat,out[9] 
 
 end
 
@@ -489,7 +491,7 @@ function DenseCapModel:getParameters()
   local cnn_params, grad_cnn_params = self.net:get(2):getParameters()
   local local_params, grad_local_params = self.net:get(3):getParameters()
   local fakenet = nn.Sequential()
-  fakenet:add(self.net:get(4))
+  fakenet:add(self.nets.recog_net)
   fakenet:add(self.nets.languageEncoder)
   fakenet:add(self.nets.fusingModel)
   local params, grad_params = fakenet:getParameters()
@@ -613,9 +615,9 @@ function DenseCapModel:forward_backward(data)
 
   local target = torch.Tensor(1):fill(1):cuda()
   local diff_loss = self.crits.diff_crit:forward(diff, target)
-  diff_loss = diff_loss*0.1
+  diff_loss = diff_loss*0.5
   local grad_diff = self.crits.diff_crit:backward(diff, target)
-  grad_diff:mul(0.1)
+  grad_diff:mul(0.5)
   print ('Difference = ' .. tostring(diff[1]))
   grad_diff:clamp(-20,20)
 
