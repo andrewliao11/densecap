@@ -46,7 +46,7 @@ function crit:clearState()
   self.mask = nil
 end
 
-
+local debugger = require('fb.debugger')
 function crit:updateOutput(input, target_boxes)
   local anchor_boxes, transforms = unpack(input)
   self.target_transforms = self.invert_transform:forward{anchor_boxes, target_boxes}

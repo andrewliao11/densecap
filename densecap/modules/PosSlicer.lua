@@ -22,6 +22,8 @@ produces nil for the ground-truth, and we want to run the language model and
 box regression for all boxes.
 --]]
 
+local debugger = require('fb.debugger')
+
 function layer:__init()
   parent.__init(self)
   self.grad_features = torch.Tensor()

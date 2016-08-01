@@ -32,6 +32,7 @@ function layer:clearState()
   self.gradInput[2]:set()
 end
 
+local debugger = require('fb.debugger')
 
 function layer:updateOutput(input)
   local anchor_boxes, target_boxes = input[1], input[2]
@@ -45,7 +46,6 @@ function layer:updateOutput(input)
   local yt = target_boxes[{{}, 2}]
   local wt = target_boxes[{{}, 3}]
   local ht = target_boxes[{{}, 4}]
-
   self.output:resizeAs(target_boxes)
   self.output[{{}, 1}]:add(xt, -1, xa):cdiv(wa)
   self.output[{{}, 2}]:add(yt, -1, ya):cdiv(ha)

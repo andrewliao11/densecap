@@ -69,7 +69,7 @@ function M.parse(arg)
   cmd:option('-optim_beta2', 0.999, 'beta2 for adam')
   cmd:option('-optim_epsilon', 1e-8, 'epsilon for smoothing')
   cmd:option('-drop_prob', 0.5, 'Dropout strength throughout the model.')
-  cmd:option('-max_iters', 22000, 'Number of iterations to run; -1 to run forever')
+  cmd:option('-max_iters', 100000, 'Number of iterations to run; -1 to run forever')
   cmd:option('-checkpoint_start_from', '',
     'Load model from a checkpoint instead of random initialization.')
   cmd:option('-finetune_cnn_after', -1,
@@ -77,12 +77,12 @@ function M.parse(arg)
   cmd:option('-finetune_local_after', -1,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
 
-  cmd:option('-val_images_use', 500,
+  cmd:option('-val_images_use', 100,
     'Number of validation images to use for evaluation; -1 to use all')
 
   -- Model checkpointing
   -- originally save_checkpoint_every 10000
-  cmd:option('-save_checkpoint_every', 2000,
+  cmd:option('-save_checkpoint_every', 5000,
     'How often to save model checkpoints')
   cmd:option('-checkpoint_path', './model/v5/checkpoint.t7',
     'Name of the checkpoint file to use')

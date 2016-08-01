@@ -220,7 +220,7 @@ end
 
 function DataLoader:testIfOutOfBound()
 
-  if self.ri > #self.test_imlist then
+  if self.ri_next > #self.test_imlist then
     return true
   else
     return false
@@ -255,9 +255,9 @@ function DataLoader:getBatch(opt)
   --if self.debug_max_train_images > 0 then max_index = self.debug_max_train_images end
   if iterate then
     ri = self.iterators[split] -- get next index from iterator
-    local ri_next = ri + 1 -- increment iterator
-    if ri_next > max_index then ri_next = 1 end -- wrap back around
-    self.iterators[split] = ri_next
+    self.ri_next = ri + 1 -- increment iterator
+    if self.ri_next > max_index then self.ri_next = 1 end -- wrap back around
+    self.iterators[split] = self.ri_next
   else
     -- pick an index randomly
     ri = torch.random(max_index)

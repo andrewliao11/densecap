@@ -205,7 +205,7 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
   --pred_score = nn.Sigmoid()(pred_score)
   local avg_lm = nn.Mean(1)(nn.Mean(2)(lm_out))
   local avg_roi = nn.Mean(1)(nn.Mean(2)(pos_roi_feat))
-  local diff = nn.CMulTable(1){avg_lm, nn.Power(-1)(avg_roi)}
+  local diff = nn.CMulTable(1){avg_roi, nn.Power(-1)(avg_lm)}
 
   local inputs = {
     objectness_scores,
@@ -615,12 +615,15 @@ function DenseCapModel:forward_backward(data)
 
   local target = torch.Tensor(1):fill(1):cuda()
   local diff_loss = self.crits.diff_crit:forward(diff, target)
-  diff_loss = diff_loss*0.5
+  if diff_loss > 1000 then 
+    diff_loss = 1000 
+    print('Loss is way too big(>1000)')
+  end
+  --diff_loss = diff_loss
   local grad_diff = self.crits.diff_crit:backward(diff, target)
-  grad_diff:mul(0.5)
+  --grad_diff:mul(0.5)
   print ('Difference = ' .. tostring(diff[1]))
-  grad_diff:clamp(-20,20)
-
+  grad_diff:clamp(-5,5)
   local ll_losses = self.nets.localization_layer.stats.losses
   local losses = {
     mid_objectness_loss=ll_losses.obj_loss_pos + ll_losses.obj_loss_neg,
