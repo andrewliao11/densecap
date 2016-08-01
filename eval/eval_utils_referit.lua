@@ -4,6 +4,7 @@ local utils = require 'densecap.utils'
 local box_utils = require 'densecap.box_utils'
 local eval_utils = {}
 local debugger = require('fb.debugger')
+require 'densecap.modules.BoxIoU'
 
 --[[
 Evaluate a DenseCapModel on a split of data from a DataLoader.
@@ -37,6 +38,7 @@ function eval_utils.eval_split(kwargs, opt)
   local ious = nn.BoxIoU()
   local total_query = 0
   local hit = 0
+  local oracle = 0
   local counter = 0
   local all_losses = {}
   local result_boxes = {}
@@ -83,6 +85,7 @@ function eval_utils.eval_split(kwargs, opt)
     local boxes, logprobs, pred_IoUs, pos_roi_boxes, lm_out, roi_feat, diff = model:forward_test(data)
     result_boxes[info[1]] = boxes:float()
     evaluator:addResult(logprobs, boxes, nil, gt_boxes[1], nil)
+
     y, i = torch.max(pred_IoUs:float(), 2)
     pos_roi_boxes = pos_roi_boxes:float()
     pred_boxes = pos_roi_boxes:index(1,i:view(-1)):view(1, -1, 4)
@@ -107,14 +110,25 @@ function eval_utils.eval_split(kwargs, opt)
       end
     end
 
+
+    local boxes_view = pos_roi_boxes:view(1, -1, 4):cuda()
+    local gt_boxes_view = data.gt_boxes:view(1, -1, 4):cuda()
+    local box_iou = nn.BoxIoU():type(gt_boxes_view:type())
+    local IoUs = box_iou:forward{gt_boxes_view, boxes_view}  -- N x M
+    local cur_oracle = torch.sum(torch.max(IoUs,3)[1]:ge(0.5))
+    oracle = oracle + cur_oracle
+    
+    local cur_hit  = 0
     for i = 1,pred_boxes:size(2) do
       iou = ious:forward{pred_boxes[1][i]:view(1, -1, 4), gt_boxes[1][i]:float():view(1, -1, 4)}
       iou = iou:view(-1)
       if iou[1] > 0.5 then
-        hit = hit+1
+        cur_hit = cur_hit+1
       end
     end
-    
+    hit = hit + cur_hit 
+    print(info[1] .. 'get' .. tostring(cur_hit) .. 'hits!')    
+
     total_query = total_query + pred_boxes:size(2)
 
     -- Print a message to the console
@@ -156,7 +170,7 @@ function eval_utils.eval_split(kwargs, opt)
   print('Average loss: ', loss_results.total_loss)
   local precision = hit/total_query
   print('Precision: ', hit/total_query)
- 
+  print('Oracle: ', oracle/total_query)
   local ap_results = evaluator:evaluate()
   print(string.format('mAP: %f', 100 * ap_results.map))
   

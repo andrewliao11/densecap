@@ -47,7 +47,7 @@ opt.idx_to_token = loader.info.idx_to_token
 -- pretrained model
 --opt.checkpoint_start_from = 'checkpoint.t7'
 
-local checkpoint = torch.load('./model/delete_pos/checkpoint.t7-10000')
+local checkpoint = torch.load('./model/v5_best_with_bug')
 
 local model = checkpoint.model
 print 'Loaded model'
@@ -100,7 +100,6 @@ local best_val_score = -1
     file:write(text)
     file:close()
     print('wrote ' .. 'test_boxes' .. '.json')
-
 
 --[[
     -- serialize a json file that has all info except the model
