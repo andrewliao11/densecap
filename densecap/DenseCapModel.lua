@@ -186,7 +186,7 @@ end
 function DenseCapModel:_buildFusingModel(dim_hidden)
 
   local objectness_scores = nn.Identity()()
-  local pos_roi_boxes = nn.Identity()()
+  --local pos_roi_boxes = nn.Identity()()
   local final_box_trans = nn.Identity()()
   local final_boxes = nn.Identity()()
   local gt_boxes = nn.Identity()()
@@ -209,13 +209,13 @@ function DenseCapModel:_buildFusingModel(dim_hidden)
 
   local inputs = {
     objectness_scores,
-    pos_roi_boxes, final_box_trans, final_boxes,
+    final_box_trans, final_boxes,
     gt_boxes, gt_labels, pos_roi_feat, roi_boxes, lm_output_end
   }
 
   local outputs = {
     objectness_scores,
-    pos_roi_boxes, final_box_trans, final_boxes,
+    final_box_trans, final_boxes,
     lm_out,
     gt_boxes, gt_labels , roi_boxes, diff, pred_score
   }
@@ -236,11 +236,11 @@ function DenseCapModel:_buildRecognitionNet()
   local roi_codes = self.nets.recog_base(roi_feats)
   local objectness_scores = self.nets.objectness_branch(roi_codes)
 
-  local pos_roi_codes = nn.PosSlicer(){roi_codes, gt_labels}
-  local pos_roi_boxes = nn.PosSlicer(){roi_boxes, gt_boxes}
+  --local pos_roi_codes = nn.PosSlicer(){roi_codes, gt_labels}
+  --local pos_roi_boxes = nn.PosSlicer(){roi_boxes, gt_boxes}
   
-  local final_box_trans = self.nets.box_reg_branch(pos_roi_codes)
-  local final_boxes = nn.ApplyBoxTransform(){pos_roi_boxes, final_box_trans}
+  local final_box_trans = self.nets.box_reg_branch(roi_codes)
+  local final_boxes = nn.ApplyBoxTransform(){roi_boxes, final_box_trans}
 
   local local_feat = nn.JoinTable(2)({roi_codes, roi_boxes})
   local pos_roi_feat = nn.Linear(4096+4,512)(local_feat)
@@ -251,14 +251,14 @@ function DenseCapModel:_buildRecognitionNet()
   -- Annotate nodes
   roi_codes:annotate{name='recog_base'}
   objectness_scores:annotate{name='objectness_branch'}
-  pos_roi_codes:annotate{name='code_slicer'}
-  pos_roi_boxes:annotate{name='box_slicer'}
+  --pos_roi_codes:annotate{name='code_slicer'}
+  --pos_roi_boxes:annotate{name='box_slicer'}
   final_box_trans:annotate{name='box_reg_branch'}
 
   local inputs = {roi_feats, roi_boxes, gt_boxes, gt_labels}
   local outputs = {
     objectness_scores,
-    pos_roi_boxes, final_box_trans, final_boxes,
+    final_box_trans, final_boxes,
     gt_boxes, gt_labels , pos_roi_feat, roi_boxes
   }
 
@@ -384,7 +384,7 @@ function DenseCapModel:updateOutput(data)
     -- variables dumped by the LocalizationLayer. Do we want to do that?
   end
 
-  return self.output, recog_output[7]
+  return self.output, recog_output[6]
 end
 
 
@@ -469,8 +469,8 @@ function DenseCapModel:backward(input, gradOutput)
   local layer_input = self.net.output
   local dout = self.nets.fusingModel:backward(layer_input, gradOutput)
   
-  local lang_dout = self.nets.languageEncoder:backward({self.gt_labels[1], self.mask:cuda()}, dout[9])
-  table.remove(dout, 9)
+  local lang_dout = self.nets.languageEncoder:backward({self.gt_labels[1], self.mask:cuda()}, dout[8])
+  table.remove(dout, 8)
   layer_input = self.net:get(3).output
   dout = self.net:get(4):backward(layer_input, dout)
 
@@ -546,23 +546,22 @@ function DenseCapModel:forward_backward(data)
   local out = self:forward(data)
   -- Pick out the outputs we care about
   local objectness_scores = out[1]
-  local pos_roi_boxes = out[2]
-  local final_box_trans = out[3]
-  local lm_output = out[5]
-  local gt_boxes = out[6]
+  --local pos_roi_boxes = out[2]
+  local final_box_trans = out[2]
+  local lm_output = out[4]
+  local gt_boxes = out[5]
   local gt_labels = out[7]
-  local pred_IoUs = out[10]:view(self.gt_labels:size(2),-1)
-  local roi_boxes = out[8]
-  local diff = out[9]
-
+  local pred_IoUs = out[9]:view(self.gt_labels:size(2),-1)
+  local roi_boxes = out[7]
+  local diff = out[8]
   local num_boxes = objectness_scores:size(1)
-  local num_pos = pos_roi_boxes:size(1)
+  local num_pos = final_box_trans:size(1)
 
   local boxes_view = roi_boxes:view(1, -1, 4)
   local gt_boxes_view = self.gt_boxes:view(1, -1, 4)
   local box_iou = nn.BoxIoU():type(gt_boxes:type())
   local IoUs = box_iou:forward{gt_boxes_view, boxes_view}  -- N x M
-
+  debugger.enter()
   -- Compute final objectness loss and gradient
   local objectness_labels = torch.LongTensor(num_boxes):zero()
   objectness_labels[{{1, num_pos}}]:fill(1)
@@ -576,13 +575,13 @@ function DenseCapModel:forward_backward(data)
   -- Compute box regression loss; this one multiplies by the weight inside
   -- the criterion so we don't do it manually.
   local end_box_reg_loss = self.crits.box_reg_crit:forward(
-                                {pos_roi_boxes, final_box_trans},
+                                {roi_boxes, final_box_trans},
                                 gt_boxes)
   local din = self.crits.box_reg_crit:backward(
-                         {pos_roi_boxes, final_box_trans},
+                         {roi_boxes, final_box_trans},
 
                          gt_boxes)
-  local grad_pos_roi_boxes, grad_final_box_trans = unpack(din)
+  local grad_roi_boxes, grad_final_box_trans = unpack(din)
   --[[
   -- Compute captioning loss
   local target = self.nets.language_model:getTarget(gt_labels)
@@ -654,11 +653,11 @@ function DenseCapModel:forward_backward(data)
   -- Run the model backward
   local grad_out = {}
   --grad_out[1] = out[1].new(#out[1]):zero()
-  grad_out[2] = out[2].new(#out[2]):zero()
-  grad_out[3] = out[3].new(#out[3]):zero()
+  --grad_out[2] = out[2].new(#out[2]):zero()
+  --grad_out[3] = out[3].new(#out[3]):zero()
   grad_out[1] = grad_objectness_scores
-  --grad_out[2] = grad_pos_roi_boxes
-  --grad_out[3] = grad_final_box_trans
+  grad_out[2] = grad_roi_boxes
+  grad_out[3] = grad_final_box_trans
   grad_out[4] = out[4].new(#out[4]):zero()
   --grad_out[5] = grad_lm_output
   grad_out[5] = lm_output.new(#lm_output):zero()
