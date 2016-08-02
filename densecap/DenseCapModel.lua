@@ -622,7 +622,7 @@ function DenseCapModel:forward_backward(data)
   --diff_loss = diff_loss
   local grad_diff = self.crits.diff_crit:backward(diff, target)
   --grad_diff:mul(0.5)
-  print ('Difference = ' .. tostring(diff[1]))
+  --print ('Difference = ' .. tostring(diff[1]))
   grad_diff:clamp(-5,5)
   local ll_losses = self.nets.localization_layer.stats.losses
   local losses = {

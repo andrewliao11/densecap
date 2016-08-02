@@ -127,7 +127,7 @@ function eval_utils.eval_split(kwargs, opt)
       end
     end
     hit = hit + cur_hit 
-    print(info[1] .. 'get' .. tostring(cur_hit) .. 'hits!')    
+    print(info[1] .. ' get ' .. tostring(cur_hit) .. ' hit(s) from ' .. tostring(pred_boxes:size(2)))    
 
     total_query = total_query + pred_boxes:size(2)
 
@@ -138,27 +138,6 @@ function eval_utils.eval_split(kwargs, opt)
     local num_boxes = boxes:size(1)
     print(string.format(msg, loader:getFilename(), counter, max_images, split, num_boxes))
 
-    --[[
-    if counter % 100 == 0 then 
-      local loss_results = utils.dict_average(all_losses)
-      print('Loss stats:')
-      print(loss_results)
-      print('Average loss: ', loss_results.total_loss)
-      local precision = hit/total_query
-      print('Precision: ', hit/total_query)
-      print('Languange out:')
-      print(lm_out)
-      print('roi feature[1]:')
-      print(roi_feat[1])
-      local ap_results = evaluator:evaluate()
-      print(string.format('mAP: %f', 100 * ap_results.map))
-
-      local out = {
-        loss_results=loss_results,
-        ap_results=ap_results,
-      }
-    end
-    --]]
     -- Break out if we have processed enough images
     if max_images > 0 and counter >= max_images then break end
     --if info.split_bounds[1] == info.split_bounds[2] then break end
