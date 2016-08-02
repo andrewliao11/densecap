@@ -77,7 +77,7 @@ function M.parse(arg)
   cmd:option('-finetune_local_after', 100000,
     'Start finetuning CNN after this many iterations (-1 = never finetune)')
 
-  cmd:option('-val_images_use', 500,
+  cmd:option('-val_images_use', 100,
     'Number of validation images to use for evaluation; -1 to use all')
 
   -- Model checkpointing
